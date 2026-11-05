@@ -12,10 +12,11 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 
 /**
- * Exposes the last OTP for end-to-end tests. Only registered in the {@code dev} and {@code test} profiles.
+ * Exposes the last OTP for end-to-end tests. Only registered in the {@code dev} and {@code test} profiles, and never
+ * when {@code prod} is also active.
  */
 @RestController
-@Profile({"dev", "test"})
+@Profile(DevOtpRegistry.PROFILES)
 public class DevOtpController {
 
     private final DevOtpRegistry registry;

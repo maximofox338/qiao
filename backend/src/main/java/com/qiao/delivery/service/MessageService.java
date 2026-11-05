@@ -37,12 +37,12 @@ public class MessageService {
     }
 
     public List<MessageView> list(long userId, long contractId) {
-        Contract contract = contractService.requireParticipant(userId, contractId).contract();
-        Names names = names(contract);
+        ContractParticipant participant = contractService.requireParticipant(userId, contractId);
+        Names names = names(participant);
         return messageMapper.selectList(new LambdaQueryWrapper<Message>()
                         .eq(Message::getContractId, contractId)
                         .orderByAsc(Message::getId))
-                .stream().map(m -> view(m, contract, names)).toList();
+                .stream().map(m -> view(m, participant.contract(), names)).toList();
     }
 
     public MessageView post(long userId, long contractId, String body) {
@@ -53,7 +53,7 @@ public class MessageService {
         message.setBody(body.trim());
         message.setFlagged(keywordScanner.matchesAny(message.getBody()));
         messageMapper.insert(message);
-        return view(message, participant.contract(), names(participant.contract()));
+        return view(message, participant.contract(), names(participant));
     }
 
     List<Message> sentBy(long userId) {
@@ -65,8 +65,13 @@ public class MessageService {
     private record Names(String client, String engineer) {
     }
 
-    private Names names(Contract contract) {
-        return new Names(companyService.get(contract.getCompanyId()).getName(),
+    /**
+     * Engineers know the client only by its country: the company name is shown to the client side only.
+     */
+    private Names names(ContractParticipant viewer) {
+        Contract contract = viewer.contract();
+        String client = viewer.side() == UserRole.CLIENT ? companyService.get(contract.getCompanyId()).getName() : null;
+        return new Names(client,
                 profileService.aliases(List.of(contract.getEngineerUserId())).get(contract.getEngineerUserId()));
     }
 

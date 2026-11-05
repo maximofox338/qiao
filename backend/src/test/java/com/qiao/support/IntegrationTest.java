@@ -17,10 +17,17 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -94,6 +101,33 @@ public abstract class IntegrationTest {
             return new Response(response.getStatus(), json, response);
         } catch (Exception e) {
             throw new IllegalStateException(e);
+        }
+    }
+
+    /**
+     * Runs {@code call} {@code count} times at once (released together) and returns the results.
+     */
+    protected static <T> List<T> parallel(int count, Supplier<T> call) {
+        ExecutorService pool = Executors.newFixedThreadPool(count);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            List<Future<T>> futures = new ArrayList<>();
+            for (int i = 0; i < count; i++) {
+                futures.add(pool.submit(() -> {
+                    start.await();
+                    return call.get();
+                }));
+            }
+            start.countDown();
+            List<T> results = new ArrayList<>();
+            for (Future<T> future : futures) {
+                results.add(future.get(2, TimeUnit.MINUTES));
+            }
+            return results;
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        } finally {
+            pool.shutdownNow();
         }
     }
 

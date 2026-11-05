@@ -146,8 +146,16 @@ class ContractLifecycleIT extends IntegrationTest {
                 .path("status").asText()).isEqualTo("ACCEPTED");
 
         post("/api/contracts/" + contractId + "/messages", client, Map.of("body", "Great work, thanks!")).ok();
+        post("/api/contracts/" + contractId + "/messages", engineer, Map.of("body", "Thank you!")).ok();
+        // engineers know the client by country only; the company name stays on the client side
         JsonNode messages = get("/api/contracts/" + contractId + "/messages", engineer).ok();
-        assertThat(messages.get(0).path("senderAlias").asText()).isEqualTo("Acme Robotics");
+        assertThat(messages.get(0).path("senderSide").asText()).isEqualTo("CLIENT");
+        assertThat(messages.get(0).path("senderAlias").isNull()).isTrue();
+        assertThat(messages.get(1).path("senderAlias").asText()).isEqualTo(engineerView.path("alias").asText());
+        assertThat(messages.toString()).doesNotContain("Acme Robotics");
+        assertThat(engineerContract.toString()).doesNotContain("Acme Robotics");
+        assertThat(get("/api/contracts/" + contractId + "/messages", client).ok().get(0).path("senderAlias").asText())
+                .isEqualTo("Acme Robotics");
         assertThat(get("/api/client/contracts/" + contractId, client).ok().path("attachments").get(0)
                 .path("milestoneId").asLong()).isEqualTo(milestoneIds.get(0));
 

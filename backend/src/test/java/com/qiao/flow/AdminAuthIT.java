@@ -33,6 +33,20 @@ class AdminAuthIT extends IntegrationTest {
     }
 
     @Test
+    void parallelBadPasswordsCannotExceedTheLockout() {
+        String email = uniqueEmail("ops");
+        String password = "Correct-horse-battery-2";
+        post("/api/admin/admins", adminToken(), Map.of("email", email, "password", password, "roles", List.of("OPS"))).ok();
+
+        List<Response> responses = parallel(12, () -> post("/api/admin/auth/login", null,
+                Map.of("email", email, "password", "wrong-password-123")));
+        assertThat(responses).extracting(Response::code).containsOnly("INVALID_CREDENTIALS", "ADMIN_LOCKED");
+        assertThat(responses).filteredOn(r -> r.code().equals("INVALID_CREDENTIALS"))
+                .as("passwords actually checked").hasSize(5);
+        post("/api/admin/auth/login", null, Map.of("email", email, "password", password)).expect(429, "ADMIN_LOCKED");
+    }
+
+    @Test
     void adminRolesRestrictSections() {
         String email = uniqueEmail("finance");
         String password = "Finance-password-123";

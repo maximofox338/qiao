@@ -20,8 +20,9 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 /**
  * Sends mail according to {@code MAIL_MODE}. {@code log} only writes {@code mail_outbox}; {@code smtp} delivers after
- * the surrounding transaction commits and records the outcome. Bodies of sensitive mails (OTP codes) are redacted in
- * the outbox when delivered by SMTP.
+ * the surrounding transaction commits and records the outcome. Sensitive mails (OTP codes, which also appear in the
+ * subject) are redacted, subject and body, in the outbox when delivered by SMTP, and their subject is never logged:
+ * the outbox is readable by back-office staff, who must not be able to sign in as a user.
  */
 @Service
 public class MailService {
@@ -45,7 +46,7 @@ public class MailService {
     public void send(String to, String subject, String body, boolean sensitive) {
         if (properties.mode() == MailProperties.Mode.LOG) {
             store(to, subject, body, MailStatus.LOGGED);
-            log.info("Mail logged to={} subject={}", to, subject);
+            log.info("Mail logged to={} subject={}", to, sensitive ? REDACTED : subject);
             return;
         }
         Runnable delivery = () -> deliver(to, subject, body, sensitive);
@@ -72,10 +73,10 @@ public class MailService {
             mailSender.send(message);
             status = MailStatus.SENT;
         } catch (MailException e) {
-            log.error("Mail delivery failed to={} subject={}", to, subject, e);
+            log.error("Mail delivery failed to={} subject={}", to, sensitive ? REDACTED : subject, e);
             status = MailStatus.FAILED;
         }
-        store(to, subject, sensitive ? REDACTED : body, status);
+        store(to, sensitive ? REDACTED : subject, sensitive ? REDACTED : body, status);
     }
 
     public PageResult<MailOutboxView> search(String to, PageQuery pageQuery) {

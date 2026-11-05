@@ -61,9 +61,14 @@ public class PaymentService {
         return gateway.type();
     }
 
+    /**
+     * Only an APPROVED company can pay: a company blocked after a sanctions hit keeps its contracts but cannot fund
+     * them ({@code COMPANY_NOT_APPROVED}).
+     */
     @Transactional
     public CheckoutResponse checkout(long clientUserId, long milestoneId) {
         MilestoneRef milestone = milestoneService.requireFundable(clientUserId, milestoneId);
+        companyService.requireApproved(milestone.companyId());
         Payment payment = new Payment();
         payment.setContractMilestoneId(milestoneId);
         payment.setProvider(gateway.type());
@@ -92,7 +97,10 @@ public class PaymentService {
         if (payment.getStatus() != PaymentStatus.PENDING) {
             throw new ApiException(ErrorCode.PAYMENT_ALREADY_PAID);
         }
-        markPaid(payment, Actor.user(clientUserId));
+        if (!markPaid(payment, Actor.user(clientUserId))) {
+            // another checkout of the same milestone was confirmed first; rolls this one back to PENDING
+            throw new ApiException(ErrorCode.PAYMENT_ALREADY_PAID);
+        }
         return view(payment);
     }
 
@@ -107,7 +115,13 @@ public class PaymentService {
                 log.warn("Stripe webhook for unknown checkout session {}", sessionId);
                 return;
             }
-            markPaid(payment, Actor.system());
+            if (payment.getStatus() != PaymentStatus.PENDING) {
+                return; // already processed: Stripe retries deliveries
+            }
+            if (!markPaid(payment, Actor.system())) {
+                log.warn("Payment {} paid but milestone {} was not awaiting funds; refund manually",
+                        payment.getId(), payment.getContractMilestoneId());
+            }
         });
     }
 
@@ -160,19 +174,19 @@ public class PaymentService {
     public record Totals(BigDecimal gmvUsd, BigDecimal feesUsd) {
     }
 
-    private void markPaid(Payment payment, Actor actor) {
-        if (payment.getStatus() != PaymentStatus.PENDING) {
-            return;
-        }
+    /**
+     * Marks a PENDING payment PAID and funds its milestone.
+     *
+     * @return whether this payment funded its milestone (false if the milestone was no longer awaiting funds)
+     */
+    private boolean markPaid(Payment payment, Actor actor) {
         payment.setStatus(PaymentStatus.PAID);
         payment.setPaidAt(clock.instant());
         paymentMapper.updateById(payment);
-        if (!milestoneService.markFunded(payment.getContractMilestoneId())) {
-            log.warn("Payment {} paid but milestone {} was not awaiting funds; refund manually",
-                    payment.getId(), payment.getContractMilestoneId());
-        }
+        boolean funded = milestoneService.markFunded(payment.getContractMilestoneId());
         auditService.log(actor, AuditAction.PAYMENT_CONFIRMED, "payment", payment.getId(),
                 Map.of("milestoneId", payment.getContractMilestoneId(), "amountUsd", payment.getAmountUsd()));
+        return funded;
     }
 
     private PaymentView view(Payment payment) {

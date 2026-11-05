@@ -58,7 +58,7 @@ curl localhost:8080/api/public/categories
 |---|---|
 | `dev` | desarrollo local con valores por defecto seguros, `/api/dev/last-otp`, datos demo opcionales |
 | `test` | tests de integración (Testcontainers), límites de rate relajados |
-| `prod` | sin valores por defecto para secretos, Swagger desactivado, `PAYMENT_PROVIDER=stripe` por defecto |
+| `prod` | sin valores por defecto para secretos, Swagger desactivado, `PAYMENT_PROVIDER=stripe` por defecto; no se puede combinar con `dev` y nunca expone `/api/dev/**` |
 
 Sin perfil se usa la configuración base (`application.yml`), que exige todas las variables obligatorias.
 
@@ -68,7 +68,7 @@ Sin perfil se usa la configuración base (`application.yml`), que exige todas la
 |---|---|---|
 | `DB_URL` | sí | JDBC de MySQL. Incluir `connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true` (todo se guarda en UTC) |
 | `DB_USER`, `DB_PASSWORD` | sí | credenciales de MySQL |
-| `JWT_SECRET` | sí | secreto HS256, mínimo 32 caracteres (también firma los hashes de OTP) |
+| `JWT_SECRET` | sí | secreto HS256, mínimo 32 caracteres (también firma los hashes de OTP); los valores de ejemplo del repo se rechazan al arrancar en prod |
 | `APP_BASE_URL` | sí | URL pública del portal web (enlaces de pago y correos) |
 | `MAIL_MODE` | no (`log`) | `log` = solo `mail_outbox`; `smtp` = envío real (Alibaba DirectMail) |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | con `smtp` | servidor SMTP (SSL, puerto 465 por defecto) |
@@ -78,8 +78,8 @@ Sin perfil se usa la configuración base (`application.yml`), que exige todas la
 | `STORAGE` | no (`local`) | `local` u `oss` |
 | `STORAGE_LOCAL_DIR` | no (`/data/uploads`) | carpeta de adjuntos con `STORAGE=local` |
 | `OSS_ENDPOINT`, `OSS_BUCKET`, `OSS_ACCESS_KEY_ID`, `OSS_ACCESS_KEY_SECRET` | con `oss` | Aliyun OSS |
-| `PARTNER_API_KEY` | para la API del socio | cabecera `X-Partner-Key`; vacía = API del socio desactivada |
-| `ADMIN_BOOTSTRAP_EMAIL`, `ADMIN_BOOTSTRAP_PASSWORD` | primer arranque | crea el primer SUPERADMIN si no hay ninguno (contraseña ≥ 12) |
+| `PARTNER_API_KEY` | para la API del socio | cabecera `X-Partner-Key`; vacía = API del socio desactivada; en prod mínimo 32 caracteres |
+| `ADMIN_BOOTSTRAP_EMAIL`, `ADMIN_BOOTSTRAP_PASSWORD` | primer arranque | crea el primer SUPERADMIN si no hay ninguno (contraseña ≥ 12; los valores de ejemplo se rechazan en prod) |
 | `APP_DEMO_SEED` | no (`false`) | solo perfil `dev`: crea los datos demo |
 | `APP_CONTRACTS_HK_ENTITY_NAME`, `APP_CONTRACTS_PARTNER_ENTITY_NAME` | sí | razones sociales que aparecen en los contratos |
 

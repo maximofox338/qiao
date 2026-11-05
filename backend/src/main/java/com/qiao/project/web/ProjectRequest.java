@@ -24,7 +24,7 @@ public record ProjectRequest(
         @NotNull @DecimalMin("1.00") @Digits(integer = 10, fraction = 2) BigDecimal budgetUsd,
         @NotNull LocalDate startDate,
         LocalDate endDate,
-        @Size(max = 20) List<@Valid MilestoneRequest> milestones,
+        @Size(max = 20) List<@NotNull @Valid MilestoneRequest> milestones,
         ProjectDeclarations declarations,
         Boolean submit) {
 }
