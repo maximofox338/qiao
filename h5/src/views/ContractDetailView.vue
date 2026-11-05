@@ -34,6 +34,10 @@ const threadEl = ref<HTMLElement | null>(null)
 let poll: number | undefined
 
 type UploadItem = UploaderFileListItem & { attachmentId?: Id }
+const reviewStars = ref(0)
+const reviewComment = ref('')
+const reviewing = ref(false)
+
 const submitTarget = ref<ContractMilestone | null>(null)
 const showSubmit = ref(false)
 const submitNote = ref('')
@@ -43,6 +47,10 @@ const submitting = ref(false)
 const documents = computed(() => contract.value?.documents ?? [])
 const milestones = computed(() => [...(contract.value?.milestones ?? [])].sort((a, b) => a.seq - b.seq))
 const isActive = computed(() => contract.value?.status === 'ACTIVE')
+const team = computed(() => contract.value?.team ?? null)
+/** In a team contract only the lead submits deliveries (spec §12). */
+const isLead = computed(() => !team.value || team.value.myRole === 'LEAD')
+const myTotal = computed(() => team.value?.myTalentTotalUsd ?? contract.value?.talentTotalUsd)
 const doneCount = computed(() => milestones.value.filter((m) => m.status === 'ACCEPTED').length)
 
 async function load() {
@@ -108,8 +116,11 @@ async function acceptDoc(d: ContractDocument) {
 }
 
 // ---------- milestones ----------
-function canSubmit(m: ContractMilestone) {
+function deliverable(m: ContractMilestone) {
   return isActive.value && (m.status === 'FUNDED' || m.status === 'REVISION_REQUESTED')
+}
+function canSubmit(m: ContractMilestone) {
+  return deliverable(m) && isLead.value
 }
 function openSubmit(m: ContractMilestone) {
   submitTarget.value = m
@@ -172,9 +183,32 @@ async function confirmSubmit() {
   }
 }
 
+// ---------- review (once COMPLETED; the lead reviews for a team) ----------
+async function submitReview() {
+  if (!reviewStars.value) {
+    showFailToast(t('contract.reviewStarsRequired'))
+    return
+  }
+  reviewing.value = true
+  try {
+    await engineerApi.review(id.value, reviewStars.value, reviewComment.value.trim())
+    showSuccessToast(t('contract.reviewSent'))
+    await load()
+  } catch (e) {
+    showFailToast(errorMessage(e))
+  } finally {
+    reviewing.value = false
+  }
+}
+
 // ---------- messages ----------
 function isOwn(m: Message) {
   return sameId(m.senderUserId, auth.me?.id)
+}
+function who(m: Message) {
+  if (isOwn(m)) return t('contract.me')
+  if (m.senderSide === 'ENGINEER' && m.senderAlias) return m.senderAlias
+  return t('contract.other')
 }
 async function send() {
   const body = draft.value.trim()
@@ -211,8 +245,11 @@ async function send() {
           </div>
           <div class="summary__stats">
             <div>
-              <div class="q-muted">{{ t('contracts.total') }}</div>
-              <div class="q-amount q-amount--accent summary__amount">{{ formatUsd(contract.talentTotalUsd) }}</div>
+              <div class="q-muted">{{ team ? t('contract.myTotal') : t('contracts.total') }}</div>
+              <div class="q-amount q-amount--accent summary__amount" data-testid="contract-my-total">{{ formatUsd(myTotal) }}</div>
+              <div v-if="team" class="q-muted summary__team-total" data-testid="contract-team-total">
+                {{ t('contract.teamTotal', { amount: formatUsd(contract.talentTotalUsd) }) }}
+              </div>
             </div>
             <div v-if="milestones.length" class="summary__progress">
               <div class="q-muted">{{ t('contract.milestones') }}</div>
@@ -220,8 +257,34 @@ async function send() {
             </div>
           </div>
           <p v-if="contract.status === 'PENDING_SIGNATURES'" class="q-notice summary__hint">
-            <van-icon name="info-o" /><span>{{ t('contract.signHint') }}</span>
+            <van-icon name="info-o" /><span>{{ team ? t('contract.teamSignHint') : t('contract.signHint') }}</span>
           </p>
+        </section>
+
+        <!-- Team (spec §12): members by alias, shares and acceptance; never emails or partner references -->
+        <section v-if="team" class="q-card" data-testid="contract-team">
+          <h2 class="q-section-title">
+            {{ t('contract.teamName', { name: team.name ?? '' }) }}
+            <small v-if="team.mySharePct !== null && team.mySharePct !== undefined" data-testid="contract-my-share">
+              {{ t('contract.myShare', { pct: team.mySharePct }) }}
+            </small>
+          </h2>
+          <div
+            v-for="m in team.members"
+            :key="m.alias"
+            class="team-row"
+            :data-testid="`contract-team-member-${m.alias}`"
+            :data-status="m.accepted ? 'ACCEPTED' : 'PENDING'"
+          >
+            <span class="team-row__alias">{{ m.alias }}</span>
+            <span class="q-chip">{{ t(`teams.role.${m.role}`) }}</span>
+            <span class="team-row__share">{{ m.sharePct }}%</span>
+            <span class="team-row__state" :class="{ 'is-ok': m.accepted }">
+              <van-icon :name="m.accepted ? 'passed' : 'clock-o'" />
+              {{ m.accepted ? t('contract.memberAccepted') : t('contract.memberPending') }}
+            </span>
+          </div>
+          <p class="q-muted team-row__privacy">{{ t('contract.teamPrivacy') }}</p>
         </section>
 
         <!-- Documents -->
@@ -297,7 +360,8 @@ async function send() {
                 <div class="q-muted">{{ t('project.due', { date: formatDate(m.dueDate) }) }}</div>
               </div>
               <div class="ms__right">
-                <div class="q-amount">{{ formatUsd(m.talentAmountUsd) }}</div>
+                <div class="q-amount" :data-testid="`milestone-amount-${m.id}`">{{ formatUsd(m.myAmountUsd ?? m.talentAmountUsd) }}</div>
+                <div v-if="team" class="q-muted ms__team-amount">{{ t('contract.teamAmount', { amount: formatUsd(m.talentAmountUsd) }) }}</div>
                 <StatusTag kind="milestone" :status="m.status" :data-testid="`milestone-status-${m.id}`" />
               </div>
             </div>
@@ -332,10 +396,58 @@ async function send() {
             >
               {{ m.status === 'REVISION_REQUESTED' ? t('contract.resubmit') : t('contract.submit') }}
             </van-button>
+            <p v-else-if="deliverable(m)" class="q-muted ms__hint" :data-testid="`milestone-lead-only-${m.id}`">
+              <van-icon name="friends-o" /> {{ t('contract.leadSubmits') }}
+            </p>
             <p v-else-if="m.status === 'PENDING_FUNDING'" class="q-muted ms__hint">
               <van-icon name="clock-o" /> {{ isActive ? t('contract.notFundedHint') : t('contract.inactiveHint') }}
             </p>
           </article>
+        </section>
+
+        <!-- Review of the client -->
+        <section v-if="contract.status === 'COMPLETED'" class="q-card" data-testid="review">
+          <h2 class="q-section-title">{{ t('contract.reviewTitle') }}</h2>
+          <div v-if="contract.myReview" data-testid="review-done" :data-stars="contract.myReview.stars">
+            <div class="stars">
+              <van-icon v-for="n in 5" :key="n" :name="n <= contract.myReview.stars ? 'star' : 'star-o'" class="stars__icon" />
+            </div>
+            <p v-if="contract.myReview.comment" class="q-pre review__comment">{{ contract.myReview.comment }}</p>
+            <p class="q-muted review__hint">{{ t('contract.reviewThanks') }}</p>
+          </div>
+          <template v-else-if="contract.canReview">
+            <p class="q-muted review__hint">{{ t('contract.reviewHint') }}</p>
+            <div class="stars" role="radiogroup">
+              <button
+                v-for="n in 5"
+                :key="n"
+                type="button"
+                class="stars__btn"
+                role="radio"
+                :aria-checked="reviewStars === n"
+                :aria-label="t('contract.reviewStarN', { n })"
+                :data-testid="`review-star-${n}`"
+                @click="reviewStars = n"
+              >
+                <van-icon :name="n <= reviewStars ? 'star' : 'star-o'" class="stars__icon" />
+              </button>
+            </div>
+            <van-field
+              v-model="reviewComment"
+              v-testid="'review-comment'"
+              type="textarea"
+              rows="2"
+              autosize
+              maxlength="1000"
+              show-word-limit
+              :placeholder="t('contract.reviewPlaceholder')"
+              class="review__field"
+            />
+            <van-button block round type="primary" :loading="reviewing" data-testid="review-submit" @click="submitReview">
+              {{ t('contract.reviewSubmit') }}
+            </van-button>
+          </template>
+          <p v-else class="q-muted review__hint" data-testid="review-lead-only">{{ t('contract.reviewLeadOnly') }}</p>
         </section>
 
         <!-- Messages -->
@@ -357,7 +469,7 @@ async function send() {
               :class="{ 'is-own': isOwn(msg) }"
               :data-testid="`message-${msg.id}`"
             >
-              <div class="bubble-row__who">{{ isOwn(msg) ? t('contract.me') : t('contract.other') }}</div>
+              <div class="bubble-row__who">{{ who(msg) }}</div>
               <div class="bubble">{{ msg.body }}</div>
               <div class="bubble-row__meta">
                 <span v-if="msg.createdAt">{{ formatDateTime(msg.createdAt) }}</span>
@@ -473,6 +585,67 @@ async function send() {
 .summary__amount {
   font-size: 24px;
   line-height: 1.3;
+}
+.stars {
+  display: flex;
+  gap: 6px;
+  margin: 6px 0 10px;
+}
+.stars__btn {
+  border: 0;
+  background: none;
+  padding: 2px;
+}
+.stars__icon {
+  font-size: 26px;
+  color: #f2a33a;
+}
+.review__hint {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.review__comment {
+  margin: 0 0 6px;
+}
+.review__field {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f7f8fa;
+}
+.summary__team-total {
+  font-size: 12px;
+}
+.team-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid #f2f3f5;
+  font-size: 13px;
+}
+.team-row__alias {
+  font-weight: 600;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+.team-row__share {
+  margin-left: auto;
+  font-weight: 600;
+}
+.team-row__state {
+  color: var(--q-text-3);
+}
+.team-row__state.is-ok {
+  color: var(--q-success);
+}
+.team-row__privacy {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.ms__team-amount {
+  font-size: 11px;
 }
 .summary__progress {
   text-align: right;

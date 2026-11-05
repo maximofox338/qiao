@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { showFailToast, showSuccessToast } from 'vant'
 import PageHeader from '@/components/PageHeader.vue'
 import StatusTag from '@/components/StatusTag.vue'
-import { engineerApi, meApi } from '@/api/endpoints'
+import { engineerApi, meApi, teamApi } from '@/api/endpoints'
 import type { ConsentRecord, ConsentType } from '@/api/types'
 import { useAuthStore } from '@/stores/auth'
 import { useConfirmStore } from '@/stores/confirm'
@@ -23,6 +23,7 @@ const toggling = ref<string | null>(null)
 const exporting = ref(false)
 const deleting = ref(false)
 const projectTitles = ref<Record<string, string>>({})
+const invitationCount = ref(0)
 
 const LANGS: { value: AppLocale; label: string }[] = [
   { value: 'zh-CN', label: '简体中文' },
@@ -42,6 +43,10 @@ const cvConsents = computed(() =>
 
 onMounted(async () => {
   auth.loadMe().catch(() => undefined)
+  teamApi
+    .invitations()
+    .then((list) => (invitationCount.value = list.length))
+    .catch(() => undefined)
   try {
     await auth.loadConsents()
   } catch {
@@ -176,6 +181,14 @@ async function logout() {
         data-testid="me-profile"
       />
       <van-cell :title="t('me.earnings')" icon="balance-o" is-link to="/earnings" data-testid="me-earnings" />
+      <van-cell
+        :title="t('me.teams')"
+        icon="friends-o"
+        is-link
+        to="/teams"
+        :value="invitationCount ? t('me.teamsInvites', { n: invitationCount }) : ''"
+        data-testid="me-teams"
+      />
       <van-cell
         :title="t('me.language')"
         icon="exchange"

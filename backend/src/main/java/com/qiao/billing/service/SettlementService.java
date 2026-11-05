@@ -19,6 +19,7 @@ import com.qiao.compliance.service.AuditAction;
 import com.qiao.compliance.service.AuditService;
 import com.qiao.contract.service.MilestoneRef;
 import com.qiao.contract.service.MilestoneService;
+import com.qiao.contract.service.Payee;
 import com.qiao.profile.domain.EngineerProfile;
 import com.qiao.profile.service.EngineerProfileService;
 import com.qiao.project.service.ProjectService;
@@ -74,25 +75,32 @@ public class SettlementService {
         if (milestones.isEmpty()) {
             throw new ApiException(ErrorCode.NOTHING_TO_SETTLE);
         }
-        Map<Long, EngineerProfile> profiles = profileService.byUserIds(
-                milestones.stream().map(MilestoneRef::engineerUserId).collect(Collectors.toSet()));
+        Map<Long, EngineerProfile> profiles = profileService.byUserIds(milestones.stream()
+                .flatMap(m -> m.payees().stream()).map(Payee::engineerUserId).collect(Collectors.toSet()));
         SettlementBatch batch = new SettlementBatch();
         batch.setPeriod(period);
         batch.setStatus(SettlementBatchStatus.DRAFT);
         batch.setCreatedByAdminId(adminId);
         batchMapper.insert(batch);
         for (MilestoneRef milestone : milestones) {
-            EngineerProfile profile = profiles.get(milestone.engineerUserId());
-            SettlementLine line = new SettlementLine();
-            line.setBatchId(batch.getId());
-            line.setContractMilestoneId(milestone.milestoneId());
-            line.setEngineerUserId(milestone.engineerUserId());
-            line.setPartnerRef(profile.getPartnerRef());
-            line.setAlias(profile.getAlias());
-            line.setTalentAmountUsd(milestone.talentAmountUsd());
-            line.setStatus(SettlementLineStatus.PENDING);
-            lineMapper.insert(line);
-            milestoneService.markSettled(milestone.milestoneId(), line.getId());
+            // one line per payee: the engineer, or every member of a team with their share (spec §12.1.8)
+            Long firstLineId = null;
+            for (Payee payee : milestone.payees()) {
+                EngineerProfile profile = profiles.get(payee.engineerUserId());
+                SettlementLine line = new SettlementLine();
+                line.setBatchId(batch.getId());
+                line.setContractMilestoneId(milestone.milestoneId());
+                line.setEngineerUserId(payee.engineerUserId());
+                line.setPartnerRef(profile.getPartnerRef());
+                line.setAlias(profile.getAlias());
+                line.setTalentAmountUsd(payee.talentAmountUsd());
+                line.setStatus(SettlementLineStatus.PENDING);
+                lineMapper.insert(line);
+                if (firstLineId == null) {
+                    firstLineId = line.getId();
+                }
+            }
+            milestoneService.markSettled(milestone.milestoneId(), firstLineId);
         }
         SettlementBatchView view = view(batch, true);
         auditService.log(Actor.admin(adminId), AuditAction.SETTLEMENT_CREATED, "settlement_batch", batch.getId(),
@@ -207,13 +215,14 @@ public class SettlementService {
     }
 
     /**
-     * Settlement lines by contract milestone id, for engineer earnings.
+     * The engineer's settlement lines by contract milestone id, for engineer earnings.
      */
-    public Map<Long, SettlementLine> linesByMilestone(Collection<Long> milestoneIds) {
+    public Map<Long, SettlementLine> linesFor(long engineerUserId, Collection<Long> milestoneIds) {
         if (milestoneIds.isEmpty()) {
             return Map.of();
         }
         return lineMapper.selectList(new LambdaQueryWrapper<SettlementLine>()
+                        .eq(SettlementLine::getEngineerUserId, engineerUserId)
                         .in(SettlementLine::getContractMilestoneId, milestoneIds))
                 .stream().collect(Collectors.toMap(SettlementLine::getContractMilestoneId, Function.identity()));
     }

@@ -48,6 +48,15 @@ class ProductionSafetyCheckTest {
     }
 
     @Test
+    void stripeApiBaseCannotPointElsewhereInProduction() {
+        MockEnvironment env = prod(JWT, PARTNER, "");
+        env.setProperty("app.payment.stripe-api-base", "http://localhost:12111");
+        assertThatThrownBy(() -> new ProductionSafetyCheck(env)).hasMessageContaining("STRIPE_API_BASE");
+        env.setProperty("app.payment.stripe-api-base", "https://api.stripe.com");
+        assertThatCode(() -> new ProductionSafetyCheck(env)).doesNotThrowAnyException();
+    }
+
+    @Test
     void localDevelopmentKeepsItsDefaults() {
         MockEnvironment env = prod("dev-only-jwt-secret-change-me-0123456789abcdef", "dev-partner-key",
                 "QiaoAdmin-dev-2026");

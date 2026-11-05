@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { showFailToast, showSuccessToast } from 'vant'
 import PageHeader from '@/components/PageHeader.vue'
 import StateView from '@/components/StateView.vue'
 import ConsentSheet from '@/components/ConsentSheet.vue'
-import { engineerApi } from '@/api/endpoints'
-import type { Project } from '@/api/types'
+import { engineerApi, teamApi } from '@/api/endpoints'
+import { ApiError } from '@/api/client'
+import type { Project, Team } from '@/api/types'
 import { useAuthStore } from '@/stores/auth'
 import { useMetaStore } from '@/stores/meta'
 import { countryName, formatDate, formatUsd, toNumber } from '@/utils/format'
@@ -27,6 +28,18 @@ const prices = reactive<Record<string, string>>({})
 const applying = ref(false)
 const showConsent = ref(false)
 const consentLoading = ref(false)
+
+// Team bids (spec §12): only the lead of a team with at least two active members can bid for it.
+const leadTeams = ref<Team[]>([])
+const mode = ref<'individual' | 'team'>('individual')
+const teamId = ref('')
+const shares = reactive<Record<string, string>>({})
+const selectedTeam = computed(() => leadTeams.value.find((tm) => String(tm.id) === teamId.value) ?? null)
+const teamMembers = computed(() => selectedTeam.value?.members.filter((m) => m.status === 'ACTIVE') ?? [])
+const shareTotal = computed(() => Math.round(teamMembers.value.reduce((sum, m) => sum + toNumber(shares[m.alias]), 0) * 100) / 100)
+const sharesValid = computed(
+  () => shareTotal.value === 100 && teamMembers.value.every((m) => toNumber(shares[m.alias]) > 0),
+)
 
 const milestones = computed(() => [...(project.value?.milestones ?? [])].sort((a, b) => a.seq - b.seq))
 const total = computed(() => milestones.value.reduce((sum, m) => sum + toNumber(prices[String(m.id)]), 0))
@@ -49,11 +62,37 @@ async function load() {
   }
 }
 
+/** Even split in hundredths of a percent; the lead (first member) takes the remainder. */
+function evenSplit() {
+  const members = teamMembers.value
+  if (!members.length) return
+  const base = Math.floor(10000 / members.length) / 100
+  members.forEach((m, i) => {
+    shares[m.alias] = String(i === 0 ? Math.round((100 - base * (members.length - 1)) * 100) / 100 : base)
+  })
+}
+
+function memberAmount(alias: string) {
+  return (total.value * toNumber(shares[alias])) / 100
+}
+
+async function loadTeams() {
+  try {
+    leadTeams.value = (await teamApi.list()).filter((tm) => tm.myRole === 'LEAD' && tm.canApply)
+    if (leadTeams.value.length && !teamId.value) teamId.value = String(leadTeams.value[0]!.id)
+  } catch {
+    leadTeams.value = []
+  }
+}
+
+watch(teamId, evenSplit)
+
 onMounted(() => {
   load()
   meta.loadCategories()
   meta.loadConfig()
   auth.loadMe().catch(() => undefined)
+  loadTeams()
 })
 
 function validate(): boolean {
@@ -65,7 +104,17 @@ function validate(): boolean {
     showFailToast(t('project.invalidPrice'))
     return false
   }
+  if (mode.value === 'team' && (!selectedTeam.value || !sharesValid.value)) {
+    showFailToast(t('project.splitInvalid'))
+    return false
+  }
   return true
+}
+
+/** Aliases named by a team-bid error (members missing consent, approval, or already applied). */
+function errorAliases(e: unknown): string[] {
+  const data = e instanceof ApiError ? (e.data as { aliases?: string[] } | null) : null
+  return Array.isArray(data?.aliases) ? data!.aliases : []
 }
 
 async function onApply() {
@@ -80,18 +129,35 @@ async function onApply() {
 async function doApply() {
   if (!project.value) return
   applying.value = true
+  const body = {
+    coverNote: coverNote.value.trim(),
+    prices: milestones.value.map((m) => ({
+      milestoneId: m.id,
+      talentAmountUsd: Math.round(toNumber(prices[String(m.id)]) * 100) / 100,
+    })),
+  }
   try {
-    await engineerApi.apply(project.value.id, {
-      coverNote: coverNote.value.trim(),
-      prices: milestones.value.map((m) => ({
-        milestoneId: m.id,
-        talentAmountUsd: Math.round(toNumber(prices[String(m.id)]) * 100) / 100,
-      })),
-    })
+    if (mode.value === 'team' && selectedTeam.value) {
+      await engineerApi.applyAsTeam(project.value.id, {
+        ...body,
+        teamId: selectedTeam.value.id,
+        shares: teamMembers.value.map((m) => ({ alias: m.alias, sharePct: Math.round(toNumber(shares[m.alias]) * 100) / 100 })),
+      })
+      showSuccessToast(t('project.teamSuccess'))
+    } else {
+      await engineerApi.apply(project.value.id, body)
+      showSuccessToast(t('project.success'))
+    }
     project.value = { ...project.value, applied: true }
-    showSuccessToast(t('project.success'))
   } catch (e) {
-    if (isCode(e, 'CONSENT_REQUIRED')) {
+    const others = errorAliases(e).filter((a) => a !== selectedTeam.value?.leadAlias)
+    if (mode.value === 'team' && others.length && isCode(e, 'CONSENT_REQUIRED')) {
+      showFailToast(t('project.membersMissingConsent', { aliases: others.join('、') }))
+    } else if (mode.value === 'team' && others.length && isCode(e, 'PROFILE_NOT_APPROVED')) {
+      showFailToast(t('project.membersNotApproved', { aliases: others.join('、') }))
+    } else if (mode.value === 'team' && others.length && isCode(e, 'ALREADY_APPLIED')) {
+      showFailToast(t('project.membersAlreadyApplied', { aliases: others.join('、') }))
+    } else if (isCode(e, 'CONSENT_REQUIRED')) {
       showConsent.value = true
     } else if (isCode(e, 'ALREADY_APPLIED')) {
       project.value = { ...project.value, applied: true }
@@ -199,6 +265,62 @@ async function acceptConsent() {
               {{ t('project.needApproval') }}
               <router-link to="/profile" data-testid="apply-go-profile">{{ t('project.goProfile') }}</router-link>
             </span>
+          </div>
+
+          <div v-if="leadTeams.length" class="apply__mode" data-testid="apply-mode">
+            <div class="apply__prices-title">{{ t('project.applyMode') }}</div>
+            <van-radio-group v-model="mode" direction="horizontal">
+              <van-radio name="individual" data-testid="apply-mode-individual">{{ t('project.modeIndividual') }}</van-radio>
+              <van-radio name="team" data-testid="apply-mode-team">{{ t('project.modeTeam') }}</van-radio>
+            </van-radio-group>
+          </div>
+          <p v-else-if="approved" class="q-muted apply__team-hint" data-testid="apply-team-hint">{{ t('project.noTeamHint') }}</p>
+
+          <div v-if="mode === 'team' && leadTeams.length" class="apply__team" data-testid="apply-team">
+            <template v-if="leadTeams.length > 1">
+              <div class="apply__prices-title">{{ t('project.chooseTeam') }}</div>
+              <van-radio-group v-model="teamId" class="apply__teams">
+                <van-radio v-for="tm in leadTeams" :key="tm.id" :name="String(tm.id)" :data-testid="`apply-team-${tm.id}`">
+                  {{ tm.name }}
+                </van-radio>
+              </van-radio-group>
+            </template>
+            <div v-else class="apply__team-name">{{ selectedTeam?.name }}</div>
+            <div class="q-between apply__split-head">
+              <span class="apply__prices-title">{{ t('project.split') }}</span>
+              <button type="button" class="apply__even" data-testid="apply-share-even" @click="evenSplit">{{ t('project.splitEven') }}</button>
+            </div>
+            <p class="apply__hint">{{ t('project.splitHint') }}</p>
+            <div v-for="m in teamMembers" :key="m.alias" class="price-row" :data-testid="`apply-share-row-${m.alias}`">
+              <div class="price-row__label">
+                <span class="price-row__seq">{{ t(`teams.role.${m.role}`) }}</span>
+                <span class="price-row__name share__alias">{{ m.alias }}</span>
+                <span class="q-muted price-row__ref" :data-testid="`apply-share-amount-${m.alias}`">
+                  {{ t('project.memberAmount', { amount: formatUsd(memberAmount(m.alias)) }) }}
+                </span>
+              </div>
+              <div class="price-row__input share__input">
+                <van-field
+                  v-model="shares[m.alias]"
+                  v-testid="`apply-share-${m.alias}`"
+                  type="number"
+                  maxlength="6"
+                  input-align="right"
+                  placeholder="0"
+                  class="price-row__field"
+                />
+                <span class="price-row__currency">%</span>
+              </div>
+            </div>
+            <div
+              class="apply__total"
+              data-testid="apply-share-total"
+              :data-valid="sharesValid ? 'true' : 'false'"
+              :class="{ 'is-invalid': !sharesValid }"
+            >
+              <span>{{ t('project.splitTotal', { pct: shareTotal }) }}</span>
+              <van-icon :name="sharesValid ? 'passed' : 'warning-o'" />
+            </div>
           </div>
 
           <van-field
@@ -490,6 +612,49 @@ async function acceptConsent() {
 }
 .apply__total-amount {
   font-size: 22px;
+}
+.apply__mode {
+  margin-bottom: 14px;
+}
+.apply__team-hint {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.apply__team {
+  margin-bottom: 16px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #f7f9ff;
+  border: 1px solid #dfe6fb;
+}
+.apply__teams {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.apply__team-name {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.apply__split-head {
+  margin-top: 4px;
+}
+.apply__even {
+  border: 0;
+  background: none;
+  color: var(--q-primary);
+  font-size: 13px;
+}
+.share__alias {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+.share__input {
+  width: 110px;
+}
+.apply__total.is-invalid {
+  color: var(--q-danger);
 }
 .apply__hint {
   margin: 6px 0 16px;

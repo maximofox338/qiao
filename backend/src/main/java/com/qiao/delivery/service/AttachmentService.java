@@ -105,16 +105,18 @@ public class AttachmentService {
     }
 
     /**
-     * Links uploaded files to a milestone submission; all must belong to the contract and the uploader.
+     * Links uploaded files to a milestone submission; all must belong to the contract and have been uploaded by the
+     * engineer side (the engineer, or any member of a team).
      */
-    void linkToMilestone(Collection<Long> attachmentIds, long contractId, long milestoneId, long uploaderUserId) {
+    void linkToMilestone(Collection<Long> attachmentIds, long contractId, long milestoneId,
+                         Collection<Long> uploaderUserIds) {
         if (attachmentIds.isEmpty()) {
             return;
         }
         long valid = attachmentMapper.selectCount(new LambdaQueryWrapper<Attachment>()
                 .in(Attachment::getId, attachmentIds)
                 .eq(Attachment::getContractId, contractId)
-                .eq(Attachment::getUploaderUserId, uploaderUserId));
+                .in(Attachment::getUploaderUserId, uploaderUserIds));
         if (valid != attachmentIds.stream().distinct().count()) {
             throw ApiException.validation("attachmentIds", ValidationCodes.INVALID);
         }

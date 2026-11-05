@@ -253,7 +253,7 @@ async function submit() {
             <StatusTag kind="profile" :status="status" data-testid="profile-status" />
           </div>
           <p class="status-card__hint">{{ t(`profile.statusHint.${status}`) }}</p>
-          <p v-if="profile?.ratingCount" class="q-muted">
+          <p v-if="profile?.ratingCount" class="q-muted" data-testid="profile-rating">
             {{ t('profile.rating', { avg: Number(profile.ratingAvg ?? 0).toFixed(1), count: profile.ratingCount }) }}
           </p>
           <div v-if="status === 'REJECTED' && profile?.reviewNote" class="q-notice q-notice--danger" data-testid="profile-review-note">

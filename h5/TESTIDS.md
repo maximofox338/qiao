@@ -124,6 +124,38 @@ immediately with `POST /api/contracts/{id}/attachments`), `milestone-submit-conf
 
 Messages: `messages`, `messages-refresh`, `message-list`, `message-<id>`, `message-input`, `message-send`.
 
+## Teams `/m/teams` and `/m/teams/:id` (spec §12)
+
+List: `teams-page`, `teams-explain`, `team-invitation-<teamId>` (pending invitation card),
+`team-invitation-accept-<teamId>`, `team-invitation-decline-<teamId>`, `team-card-<teamId>` (link to the team),
+`teams-empty`, `teams-need-approval`, `team-create-open` → sheet `team-create-sheet`, `team-create-name`,
+`team-create-description`, `team-create-submit` (navigates to `/m/teams/<id>`).
+
+Detail: `team-page`, `team-name`, `team-description`, `team-can-apply` (`data-status` = `READY` with ≥ 2 active members,
+else `NOT_READY`), `team-member-<alias>` (`data-status` = INVITED / ACTIVE / DECLINED), `team-member-remove-<alias>`
+(lead; cancels an invitation or removes a member, asks `confirm-ok`), `team-invite` (lead), `team-invite-alias`,
+`team-invite-submit`, `team-invited` (+ `team-accept`, `team-decline`) for an invitee, `team-leave` (member),
+`team-dissolve` (lead), `team-edit-open` → `team-edit-sheet`, `team-edit-name`, `team-edit-description`, `team-edit-save`.
+Entry point: `me-teams` on `/m/me` (its value shows the number of pending invitations).
+
+Team bid (project detail, only for the lead of a team that can apply): `apply-mode` with `apply-mode-individual` /
+`apply-mode-team` (radios), `apply-team` (split editor), `apply-team-<teamId>` (radio, only with several teams),
+`apply-share-even`, `apply-share-row-<alias>`, `apply-share-<alias>` (percentage input), `apply-share-amount-<alias>`
+(≈ member total), `apply-share-total` (`data-valid="true"` when the split is > 0 for everyone and adds up to 100).
+`apply-team-hint` is shown to approved engineers without such a team. Errors naming other members
+(`CONSENT_REQUIRED`, `PROFILE_NOT_APPROVED`, `ALREADY_APPLIED` with `data.aliases`) appear as a toast listing their aliases.
+
+Applications: `application-team-<id>` (`data-role` = LEAD / MEMBER, shows my share). Members have no
+`application-withdraw-<id>`; each member has their own `cv-consent-grant-<id>`.
+
+Team contract (detail): `contract-team` (members with `contract-team-member-<alias>`, `data-status` = ACCEPTED / PENDING),
+`contract-my-share`, `contract-my-total`, `contract-team-total`, `milestone-amount-<id>` (my part),
+`milestone-lead-only-<id>` (members, instead of `milestone-submit-<id>`). List: `contract-card-team-<id>`.
+
+Review of the client (contract `COMPLETED`, spec §13): `review` (card), `review-star-1` … `review-star-5`
+(`aria-checked`), `review-comment`, `review-submit`, `review-done` (`data-stars`), `review-lead-only` (team members:
+the lead reviews for the team). The engineer's rating on `/m/profile`: `profile-rating`.
+
 ## Earnings `/m/earnings`
 
 `earnings-page`, `earnings-summary`, `earning-<contractMilestoneId>`, `earning-settlement-<contractMilestoneId>`.

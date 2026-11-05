@@ -18,6 +18,7 @@ import java.util.Set;
 public class ProductionSafetyCheck {
 
     static final int MIN_PARTNER_KEY_LENGTH = 32;
+    static final String STRIPE_API = "https://api.stripe.com";
 
     private static final Set<String> PUBLIC_VALUES = Set.of(
             // application-dev.yml defaults
@@ -39,6 +40,11 @@ public class ProductionSafetyCheck {
         requireSecret(environment, "app.jwt.secret", "JWT_SECRET");
         requireSecret(environment, "app.partner.api-key", "PARTNER_API_KEY");
         requireSecret(environment, "app.admin.bootstrap-password", "ADMIN_BOOTSTRAP_PASSWORD");
+        // STRIPE_API_BASE exists for tests against stripe-mock; in production the secret key must only go to Stripe
+        String stripeBase = environment.getProperty("app.payment.stripe-api-base", "").trim();
+        if (!stripeBase.isEmpty() && !stripeBase.equals(STRIPE_API)) {
+            throw new IllegalStateException("STRIPE_API_BASE must be empty (or " + STRIPE_API + ") in production");
+        }
         String partnerKey = environment.getProperty("app.partner.api-key", "");
         if (!partnerKey.isBlank() && partnerKey.length() < MIN_PARTNER_KEY_LENGTH) {
             throw new IllegalStateException("PARTNER_API_KEY must have at least " + MIN_PARTNER_KEY_LENGTH

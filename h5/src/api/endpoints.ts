@@ -19,6 +19,9 @@ import type {
   Page,
   Project,
   PublicConfig,
+  ReviewSummary,
+  Team,
+  TeamInvitation,
 } from './types'
 
 export const publicApi = {
@@ -85,6 +88,33 @@ export const engineerApi = {
     http.post<unknown>(`/engineer/milestones/${id}/submit`, { note, attachmentIds }),
 
   earnings: async () => asList(await http.get<Earning[] | Page<Earning>>('/engineer/earnings')),
+  review: (contractId: Id, stars: number, comment: string) =>
+    http.post<ReviewSummary>(`/engineer/contracts/${contractId}/review`, { stars, comment }),
+
+  applyAsTeam: (
+    projectId: Id,
+    body: {
+      teamId: Id
+      coverNote: string
+      prices: { milestoneId: Id; talentAmountUsd: number }[]
+      shares: { alias: string; sharePct: number }[]
+    },
+  ) => http.post<Application>(`/engineer/projects/${projectId}/team-applications`, body),
+}
+
+/** Teams (docs/SPEC.md §12). */
+export const teamApi = {
+  list: async () => asList(await http.get<Team[] | Page<Team>>('/engineer/teams')),
+  get: (id: Id) => http.get<Team>(`/engineer/teams/${id}`),
+  create: (body: { name: string; description: string }) => http.post<Team>('/engineer/teams', body),
+  update: (id: Id, body: { name: string; description: string }) => http.put<Team>(`/engineer/teams/${id}`, body),
+  invite: (id: Id, alias: string) => http.post<Team>(`/engineer/teams/${id}/invitations`, { alias }),
+  invitations: async () => asList(await http.get<TeamInvitation[] | Page<TeamInvitation>>('/engineer/team-invitations')),
+  accept: (id: Id) => http.post<Team>(`/engineer/teams/${id}/invitations/accept`),
+  decline: (id: Id) => http.post<unknown>(`/engineer/teams/${id}/invitations/decline`),
+  remove: (id: Id, memberId: Id) => http.post<Team>(`/engineer/teams/${id}/members/${memberId}/remove`),
+  leave: (id: Id) => http.post<unknown>(`/engineer/teams/${id}/leave`),
+  dissolve: (id: Id) => http.post<unknown>(`/engineer/teams/${id}/dissolve`),
 }
 
 export const contractApi = {

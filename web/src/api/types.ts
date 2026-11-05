@@ -177,6 +177,15 @@ export interface ApplicationPrice {
   clientAmountUsd?: number
 }
 
+export type TeamRole = 'LEAD' | 'MEMBER'
+
+/** Team card of a team application (spec §12): every member through a pseudonymized profile; no split. */
+export interface ApplicationTeam {
+  name: string | null
+  description?: string | null
+  members: Array<{ alias: string; role: TeamRole; profile: PseudonymizedEngineer; cvAvailable: boolean }>
+}
+
 export interface Application {
   id: number
   status: ApplicationStatus
@@ -184,9 +193,11 @@ export interface Application {
   talentTotalUsd?: number
   clientTotalUsd: number
   prices: ApplicationPrice[]
+  /** The engineer, or the team lead for a team application. */
   engineer: PseudonymizedEngineer
   cvAvailable: boolean
   createdAt?: string
+  team?: ApplicationTeam | null
 }
 
 export interface EngineerCv {
@@ -253,6 +264,30 @@ export interface Contract {
   milestones?: ContractMilestone[]
   attachments?: Attachment[]
   createdAt?: string
+  /** The client side's own review (only once COMPLETED) and whether it can still be written. */
+  myReview?: ReviewSummary | null
+  canReview?: boolean
+  /** Team contracts: members by alias with their acceptance (no split). */
+  team?: { name: string | null; members: Array<{ alias: string; role: TeamRole; accepted: boolean; acceptedAt?: string | null }> } | null
+}
+
+export interface ReviewSummary {
+  stars: number
+  comment?: string | null
+  createdAt?: string
+}
+
+export interface AdminReview {
+  id: number
+  contractId: number
+  projectId?: number
+  projectTitle?: string | null
+  fromSide: UserRole
+  fromLabel?: string | null
+  toLabel?: string | null
+  stars: number
+  comment?: string | null
+  createdAt: string
 }
 
 export interface Message {
@@ -260,6 +295,7 @@ export interface Message {
   contractId?: number
   senderUserId: number
   senderRole?: UserRole
+  senderSide?: UserRole
   senderAlias?: string
   body: string
   flagged?: boolean
@@ -285,6 +321,14 @@ export interface AdminInfo {
   id: number
   email: string
   roles: AdminRole[]
+  totpEnabled?: boolean
+}
+
+export interface TotpSetup {
+  secret: string
+  otpauthUri: string
+  issuer?: string
+  account?: string
 }
 
 export interface AdminLoginResponse {

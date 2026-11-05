@@ -77,6 +77,8 @@ app:
     provider: ${PAYMENT_PROVIDER:fake}
     stripe-secret-key: ${STRIPE_SECRET_KEY:}
     stripe-webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+    # empty = https://api.stripe.com; only for tests against stripe/stripe-mock (refused in production)
+    stripe-api-base: ${STRIPE_API_BASE:}
   storage:
     type: ${STORAGE:local}
     local-dir: ${STORAGE_LOCAL_DIR:/data/uploads}

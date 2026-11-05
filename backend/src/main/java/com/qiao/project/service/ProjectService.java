@@ -20,6 +20,8 @@ import com.qiao.compliance.service.AuditService;
 import com.qiao.compliance.service.KeywordScanner;
 import com.qiao.project.domain.Application;
 import com.qiao.project.domain.ApplicationMapper;
+import com.qiao.project.domain.ApplicationMember;
+import com.qiao.project.domain.ApplicationMemberMapper;
 import com.qiao.project.domain.ApplicationStatus;
 import com.qiao.project.domain.Project;
 import com.qiao.project.domain.ProjectMapper;
@@ -39,6 +41,7 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -54,6 +57,7 @@ public class ProjectService {
     private final ProjectMapper projectMapper;
     private final ProjectMilestoneMapper milestoneMapper;
     private final ApplicationMapper applicationMapper;
+    private final ApplicationMemberMapper applicationMemberMapper;
     private final ProjectValidator validator;
     private final CategoryService categoryService;
     private final CompanyService companyService;
@@ -63,12 +67,14 @@ public class ProjectService {
     private final Clock clock;
 
     public ProjectService(ProjectMapper projectMapper, ProjectMilestoneMapper milestoneMapper,
-                          ApplicationMapper applicationMapper, ProjectValidator validator,
+                          ApplicationMapper applicationMapper, ApplicationMemberMapper applicationMemberMapper,
+                          ProjectValidator validator,
                           CategoryService categoryService, CompanyService companyService, KeywordScanner keywordScanner, FeeCalculator feeCalculator,
                           AuditService auditService, Clock clock) {
         this.projectMapper = projectMapper;
         this.milestoneMapper = milestoneMapper;
         this.applicationMapper = applicationMapper;
+        this.applicationMemberMapper = applicationMemberMapper;
         this.validator = validator;
         this.categoryService = categoryService;
         this.companyService = companyService;
@@ -180,9 +186,7 @@ public class ProjectService {
      */
     public EngineerProjectView getForEngineer(long engineerUserId, long projectId) {
         Project project = projectMapper.selectById(projectId);
-        boolean applied = project != null && applicationMapper.exists(new LambdaQueryWrapper<Application>()
-                .eq(Application::getProjectId, projectId)
-                .eq(Application::getEngineerUserId, engineerUserId));
+        boolean applied = project != null && appliedProjectIds(engineerUserId, List.of(projectId)).contains(projectId);
         if (project == null || (project.getStatus() != ProjectStatus.OPEN && !applied)) {
             throw ApiException.notFound("Project");
         }
@@ -410,6 +414,23 @@ public class ProjectService {
         return counts;
     }
 
+    /**
+     * Projects (among {@code projectIds}) the engineer applied to, alone or as a member of a team application.
+     */
+    private Set<Long> appliedProjectIds(long engineerUserId, Collection<Long> projectIds) {
+        Set<Long> applied = applicationMapper.selectList(new LambdaQueryWrapper<Application>()
+                        .select(Application::getProjectId)
+                        .eq(Application::getEngineerUserId, engineerUserId)
+                        .in(Application::getProjectId, projectIds))
+                .stream().map(Application::getProjectId).collect(Collectors.toCollection(HashSet::new));
+        applicationMemberMapper.selectList(new LambdaQueryWrapper<ApplicationMember>()
+                        .select(ApplicationMember::getProjectId)
+                        .eq(ApplicationMember::getEngineerUserId, engineerUserId)
+                        .in(ApplicationMember::getProjectId, projectIds))
+                .forEach(m -> applied.add(m.getProjectId()));
+        return applied;
+    }
+
     private List<EngineerProjectView> engineerViews(long engineerUserId, List<Project> projects) {
         if (projects.isEmpty()) {
             return List.of();
@@ -417,11 +438,7 @@ public class ProjectService {
         List<Long> ids = projects.stream().map(Project::getId).toList();
         Map<Long, List<ProjectMilestone>> milestones = milestonesByProject(ids);
         Map<Long, ClientCompany> companies = companyService.byIds(projects.stream().map(Project::getCompanyId).collect(Collectors.toSet()));
-        Set<Long> applied = applicationMapper.selectList(new LambdaQueryWrapper<Application>()
-                        .select(Application::getProjectId)
-                        .eq(Application::getEngineerUserId, engineerUserId)
-                        .in(Application::getProjectId, ids))
-                .stream().map(Application::getProjectId).collect(Collectors.toSet());
+        Set<Long> applied = appliedProjectIds(engineerUserId, ids);
         return projects.stream().map(p -> new EngineerProjectView(p.getId(), p.getTitle(), p.getDescription(),
                 p.getCategoryCode(), p.getSkills() == null ? List.of() : p.getSkills(),
                 companies.containsKey(p.getCompanyId()) ? companies.get(p.getCompanyId()).getCountry() : null,

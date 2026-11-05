@@ -48,7 +48,11 @@ public class StripePaymentGateway implements PaymentGateway {
     public StripePaymentGateway(PaymentProperties properties, AppProperties appProperties, ObjectMapper objectMapper) {
         Assert.hasText(properties.stripeSecretKey(), "PAYMENT_PROVIDER=stripe requires STRIPE_SECRET_KEY");
         Assert.hasText(properties.stripeWebhookSecret(), "PAYMENT_PROVIDER=stripe requires STRIPE_WEBHOOK_SECRET");
-        this.requestOptions = RequestOptions.builder().setApiKey(properties.stripeSecretKey()).build();
+        RequestOptions.RequestOptionsBuilder options = RequestOptions.builder().setApiKey(properties.stripeSecretKey());
+        if (properties.stripeApiBase() != null && !properties.stripeApiBase().isBlank()) {
+            options.setBaseUrl(properties.stripeApiBase().trim());
+        }
+        this.requestOptions = options.build();
         this.webhookSecret = properties.stripeWebhookSecret();
         this.appProperties = appProperties;
         this.objectMapper = objectMapper;

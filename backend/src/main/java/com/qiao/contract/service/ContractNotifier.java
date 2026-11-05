@@ -17,15 +17,21 @@ public class ContractNotifier {
     private final Notifier notifier;
     private final UserService userService;
     private final CompanyService companyService;
+    private final ContractParties parties;
 
-    public ContractNotifier(Notifier notifier, UserService userService, CompanyService companyService) {
+    public ContractNotifier(Notifier notifier, UserService userService, CompanyService companyService,
+                            ContractParties parties) {
         this.notifier = notifier;
         this.userService = userService;
         this.companyService = companyService;
+        this.parties = parties;
     }
 
+    /**
+     * Mails the engineer, or every member of a team contract.
+     */
     public void toEngineer(Contract contract, MailTemplate template, Object... args) {
-        send(contract.getEngineerUserId(), template, args);
+        parties.engineerUserIds(contract).forEach(userId -> send(userId, template, args));
     }
 
     public void toClient(Contract contract, MailTemplate template, Object... args) {

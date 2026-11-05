@@ -50,6 +50,8 @@ export const router = createRouter({
       component: () => import('@/views/ContractDetailView.vue'),
       meta: { auth: true },
     },
+    { path: '/teams', name: 'teams', component: () => import('@/views/TeamsView.vue'), meta: { auth: true } },
+    { path: '/teams/:id', name: 'team', component: () => import('@/views/TeamDetailView.vue'), meta: { auth: true } },
     { path: '/profile', name: 'profile', component: () => import('@/views/ProfileView.vue'), meta: { auth: true } },
     { path: '/earnings', name: 'earnings', component: () => import('@/views/EarningsView.vue'), meta: { auth: true } },
     { path: '/me', name: 'me', component: () => import('@/views/MeView.vue'), meta: { auth: true, tab: true } },

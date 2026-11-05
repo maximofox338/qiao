@@ -15,7 +15,14 @@ import java.util.List;
 @TableName(value = "application", autoResultMap = true)
 public class Application extends BaseEntity {
     private Long projectId;
+    /**
+     * The applicant; for a team application, the team lead.
+     */
     private Long engineerUserId;
+    /**
+     * Set for team applications (members in {@link ApplicationMember}).
+     */
+    private Long teamId;
     private String coverNote;
     @TableField(typeHandler = JacksonTypeHandler.class)
     private List<MilestonePrice> prices;

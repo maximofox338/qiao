@@ -5,6 +5,7 @@ import com.qiao.billing.domain.SettlementLineStatus;
 import com.qiao.billing.web.EarningView;
 import com.qiao.contract.service.MilestoneRef;
 import com.qiao.contract.service.MilestoneService;
+import com.qiao.contract.service.Payee;
 import com.qiao.project.service.ProjectService;
 import org.springframework.stereotype.Service;
 
@@ -12,6 +13,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * Engineer earnings per contract milestone; in a team contract each member sees their own share.
+ */
 @Service
 public class EarningsService {
 
@@ -28,7 +32,7 @@ public class EarningsService {
 
     public List<EarningView> forEngineer(long engineerUserId) {
         List<MilestoneRef> milestones = milestoneService.forEngineer(engineerUserId);
-        Map<Long, SettlementLine> lines = settlementService.linesByMilestone(
+        Map<Long, SettlementLine> lines = settlementService.linesFor(engineerUserId,
                 milestones.stream().map(MilestoneRef::milestoneId).toList());
         Map<Long, String> titles = projectService.titles(
                 milestones.stream().map(MilestoneRef::projectId).collect(Collectors.toSet()));
@@ -37,8 +41,10 @@ public class EarningsService {
             EarningView.SettlementStatus settlement = line == null ? EarningView.SettlementStatus.NONE
                     : line.getStatus() == SettlementLineStatus.PAID ? EarningView.SettlementStatus.PAID
                     : EarningView.SettlementStatus.PENDING;
+            Payee mine = m.payee(engineerUserId);
             return new EarningView(m.milestoneId(), m.contractId(), titles.get(m.projectId()), m.seq(), m.title(),
-                    m.talentAmountUsd(), m.status(), settlement, line == null ? null : line.getPaidAt());
+                    mine == null ? m.talentAmountUsd() : mine.talentAmountUsd(), m.status(), settlement,
+                    line == null ? null : line.getPaidAt());
         }).toList();
     }
 }

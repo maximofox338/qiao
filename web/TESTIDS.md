@@ -133,6 +133,10 @@ Per-field errors (client-side or from `VALIDATION_ERROR.data.fields`) are shown 
 | `application-hire-<id>` (SELECTED, project OPEN) → `hire-dialog`, `hire-confirm`, `hire-cancel` | hire; navigates to `/client/contracts/<contractId>` |
 | `application-cv-<id>` → `cv-dialog`, `cv-text`, `cv-education`, `cv-portfolio`, `cv-close` | CV |
 | `cv-consent-required` | shown when the API answers `CV_CONSENT_REQUIRED` |
+| `application-team-<id>` | team card of a team application (spec §12) instead of the single engineer card |
+| `application-team-name-<id>` | team name |
+| `application-<id>-member-<alias>` | one member of the team card (`…-alias` inside it is the alias) |
+| `application-<id>-member-<alias>-cv` → `cv-dialog` | that member's CV (each member consents separately; `application-cv-<id>` is not rendered for teams) |
 
 ## Contract `/client/contracts/:id`
 
@@ -146,6 +150,8 @@ Per-field errors (client-side or from `VALIDATION_ERROR.data.fields`) are shown 
 | `contract-doc-accept-<docId>` | Accept (client document, not yet accepted) |
 | `contract-doc-accepted-<docId>` | accepted marker |
 | `contract-doc-waiting-<docId>` | engineer document not yet accepted |
+| `contract-engineer-agreement` | engineer side acceptance (`data-status` = ACCEPTED / PENDING; for a team: every member) |
+| `contract-team-name`, `contract-team`, `contract-team-member-<alias>` | team contracts: members and their acceptance (`data-status` = ACCEPTED / PENDING) |
 | `milestone-row-<id>`, `milestone-status-<id>`, `milestone-amount-<id>`, `milestone-note-<id>` | milestone |
 | `milestone-fund-<id>` | Fund (PENDING_FUNDING, enabled when contract ACTIVE) → checkout → navigates to the returned url |
 | `milestone-accept-<id>`, `milestone-revision-<id>`, `milestone-dispute-<id>` | SUBMITTED actions |
@@ -155,6 +161,8 @@ Per-field errors (client-side or from `VALIDATION_ERROR.data.fields`) are shown 
 | `attachment-milestone` → `attachment-milestone-option-<milestoneId>` | optional milestone for the upload |
 | `attachment-file-input` | hidden `<input type="file">`: use `setInputFiles()` (uploads immediately) |
 | `attachment-upload` | button that opens the file picker |
+
+Review (contract `COMPLETED`, spec §13): `review` (card), `review-star-1` … `review-star-5` (buttons, `aria-checked`), `review-comment` (textarea), `review-submit`, `review-done` (`data-stars` = the stars given; shown once the client side reviewed).
 
 ## Test checkout `/pay/fake/:paymentId`
 
@@ -221,6 +229,17 @@ Layout: `admin-menu-dashboard|companies|engineers|projects|disputes|settlements|
 
 ### Admins `/admin/admins` (SUPERADMIN)
 
-`admin-admins-table`, `admin-admins-row-<id>`, `admin-new-email`, `admin-new-password`, `admin-new-role-SUPERADMIN|OPS|FINANCE|COMPLIANCE`, `admin-new-submit`, `admin-new-error`.
+`admin-admins-table`, `admin-admins-row-<id>`, `admin-admins-totp-<id>` (`data-status` = ENABLED / DISABLED), `admin-admins-totp-reset-<id>` (other admins with TOTP; Element Plus confirm box), `admin-new-email`, `admin-new-password`, `admin-new-role-SUPERADMIN|OPS|FINANCE|COMPLIANCE`, `admin-new-submit`, `admin-new-error`.
+
+### Reviews `/admin/reviews` (OPS, COMPLIANCE)
+
+`admin-reviews-title`, `admin-reviews-refresh`, `admin-reviews-side` with `admin-reviews-side-all|CLIENT|ENGINEER` (radio buttons), `admin-reviews-table`, `admin-review-row-<id>`, `admin-review-stars-<id>`.
+
+### My profile `/admin/profile` (any admin, menu `admin-menu-profile`) — TOTP (spec §14)
+
+`admin-profile-title`, `admin-profile-email`, `admin-totp-status` (`data-status` = ENABLED / DISABLED), `admin-totp-error`.
+Setup: `admin-totp-setup` → `admin-totp-setup-panel` with `admin-totp-qr` (`<img>` with a `data:image/png` QR drawn locally), `admin-totp-secret` (base32 key text), `admin-totp-uri` (hidden input holding the `otpauth://` URI), `admin-totp-code`, `admin-totp-enable`, `admin-totp-cancel`.
+Enabled: `admin-totp-disable-form`, `admin-totp-disable-code`, `admin-totp-disable`.
+Login with TOTP: `admin-login-totp` (always visible); a reused code answers `TOTP_INVALID`.
 
 Every admin page has `admin-<section>-title`; list pages also have `admin-<section>-refresh`.

@@ -16,6 +16,7 @@ import type {
   Project,
   ProjectInput,
   PublicConfig,
+  ReviewSummary,
   VerifyResponse,
 } from './types'
 
@@ -71,12 +72,16 @@ export const clientApi = {
   decline: (id: number) => api.post<Application>(`/api/client/applications/${id}/decline`),
   select: (id: number) => api.post<Application>(`/api/client/applications/${id}/select`),
   hire: (id: number) => api.post<Contract & { contractId?: number }>(`/api/client/applications/${id}/hire`),
-  cv: (id: number) => api.get<EngineerCv>(`/api/client/applications/${id}/cv`),
+  /** For a team application `alias` picks the member (each member consents for their own CV). */
+  cv: (id: number, alias?: string) => api.get<EngineerCv>(`/api/client/applications/${id}/cv`, alias ? { alias } : undefined),
 
   contracts: async () => asList(await api.get<Contract[] | Page<Contract>>('/api/client/contracts', { page: 1, size: 100 })),
   contract: (id: number | string) => api.get<Contract>(`/api/client/contracts/${id}`),
   acceptDocument: (contractId: number | string, docId: number) =>
     api.post<unknown>(`/api/client/contracts/${contractId}/documents/${docId}/accept`),
+
+  review: (contractId: number | string, stars: number, comment: string) =>
+    api.post<ReviewSummary>(`/api/client/contracts/${contractId}/review`, { stars, comment }),
 
   checkout: (milestoneId: number) => api.post<CheckoutResponse>(`/api/client/milestones/${milestoneId}/checkout`),
   acceptMilestone: (milestoneId: number) => api.post<unknown>(`/api/client/milestones/${milestoneId}/accept`),

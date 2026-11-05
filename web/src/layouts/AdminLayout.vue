@@ -3,6 +3,7 @@ import { computed, ref, watch, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
+  Avatar,
   CollectionTag,
   DataBoard,
   Document,
@@ -12,6 +13,7 @@ import {
   Message,
   Money,
   OfficeBuilding,
+  Star,
   SwitchButton,
   User,
   Warning,
@@ -31,6 +33,8 @@ const ICONS: Record<string, Component> = {
   CollectionTag,
   Message,
   Key,
+  Star,
+  Avatar,
 }
 
 const { t } = useI18n()

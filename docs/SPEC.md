@@ -37,7 +37,7 @@ Phase 1 runs entirely in Alibaba Cloud Hong Kong. Engineer pages must load from 
 ## 4. Roles and auth
 - User roles: `CLIENT`, `ENGINEER`. Admin roles (multiple per admin): `SUPERADMIN`, `OPS`, `FINANCE`, `COMPLIANCE`. Admins are a separate table and login.
 - Passwordless OTP for users: 6-digit code, expires 10 min, max 5 wrong attempts then 15-min lock, max 1 request/min per email and 20/hour per IP.
-- Admin login: email + password (≥12 chars, bcrypt), lock after 5 failures for 15 min, optional TOTP (if enabled for that admin).
+- Admin login: email + password (≥12 chars, bcrypt), lock after 5 failures for 15 min, optional TOTP (if enabled for that admin; enrolment and replay protection in §14).
 - JWT expiry 7 days, claim `typ` = `user` | `admin`, `role`/`roles`, `sub` = id. Logout adds `jti` to a denylist table.
 - Bootstrap admin from env `ADMIN_BOOTSTRAP_EMAIL` / `ADMIN_BOOTSTRAP_PASSWORD` (SUPERADMIN) on startup if no admin exists.
 - Mail: `MAIL_MODE=log` writes to table `mail_outbox` (and logs); `smtp` sends via SMTP (Alibaba DirectMail). In profiles `dev` and `test` only: `GET /api/dev/last-otp?email=` returns the last code (for e2e).
@@ -46,7 +46,7 @@ Phase 1 runs entirely in Alibaba Cloud Hong Kong. Engineer pages must load from 
 All tables: `id BIGINT AUTO_INCREMENT PK`, `created_at`, `updated_at` (DATETIME(3) UTC) unless noted.
 - `app_user(email UNIQUE, role, status[ACTIVE|LOCKED|DELETED], locale, otp_locked_until, last_login_at)`
 - `otp_code(email, code_hash, purpose, expires_at, attempts, used_at, request_ip)`
-- `admin_user(email UNIQUE, password_hash, roles CSV, totp_secret NULL, failed_attempts, locked_until, status)`
+- `admin_user(email UNIQUE, password_hash, roles CSV, totp_secret NULL, totp_pending_secret NULL, totp_last_step NULL, failed_attempts, locked_until, status)` (TOTP columns: §14)
 - `jwt_denylist(jti UNIQUE, expires_at)`
 - `consent(user_id, type, version, granted BOOL, scope_ref NULL, ip, user_agent)` — append-only; current state = latest row per (user, type, scope).
 - `engineer_profile(user_id UNIQUE, alias UNIQUE e.g. "QE-7K2P", headline, bio, skills JSON, years_experience, region (province-level), english_level[NONE|BASIC|GOOD|FLUENT], spanish_level, hourly_rate_usd, availability_hours_week, cv_text TEXT, education TEXT, portfolio_links JSON, declaration_no_restrictions BOOL, declaration_at, status[DRAFT|PENDING_REVIEW|APPROVED|REJECTED], review_note, partner_ref NULL, rating_avg, rating_count)`
@@ -66,7 +66,7 @@ All tables: `id BIGINT AUTO_INCREMENT PK`, `created_at`, `updated_at` (DATETIME(
 - `transfer_event(year SMALLINT, engineer_user_id, company_id, data_kind[PSEUDONYMIZED_PROFILE|FULL_CV], created_at)` — index (year, engineer_user_id).
 - `audit_log(actor_type[USER|ADMIN|PARTNER|SYSTEM], actor_id, action, entity_type, entity_id, detail JSON, ip, created_at)`
 - `mail_outbox(to_email, subject, body TEXT, status[LOGGED|SENT|FAILED])`
-- `review(contract_id, from_user_id, to_user_id, stars 1-5, comment)` — P1, optional.
+- `review(contract_id, from_user_id, to_user_id, from_side[CLIENT|ENGINEER], stars 1-5, comment)` — one per side and contract (§13).
 
 ## 6. Fees and money
 - `PLATFORM_FEE_PCT` (default 25). Engineer proposes `talentAmountUsd` per milestone. Client price per milestone = talent × (1 + fee/100), rounded half-up to cents. Project `budgetUsd` is the client's indicative total; engineers see `talentBudgetUsd = budgetUsd / (1 + fee/100)`.
@@ -165,3 +165,57 @@ Prohibited (`allowed=false`): `crypto` Cryptocurrency & token platforms; `semico
 - Builds from a clean checkout; `mvn -q verify` and `npm run build` pass.
 - Engineer h5 build output contains no `http://` or `https://` URLs except the SVG/XML namespaces (`scripts/check-no-external.mjs`).
 - All UI strings through i18n; no hard-coded user-facing text.
+
+## 12. Teams (equipos) — phase 1.1
+Clients can hire a **team** of engineers for a project. A team is only a way to apply and deliver together: it is not a legal entity, it has no bank account and it is never the counterparty of a contract. **Every member stays an individual contractor** with their own profile, consents, partner reference, deliverables agreement and settlement line. Individual applications and contracts keep working exactly as in §7.
+
+### 12.1 Rules
+1. **Who.** Only engineers with an `APPROVED` profile can create a team, be invited or accept an invitation. The creator is the team **lead**. A team has 2–10 active members (lead included) to apply; at most 10 members (active + invited).
+2. **Invitations by alias.** The lead invites by alias (`QE-XXXX`). Unknown, non-approved or deleted aliases all answer `ENGINEER_NOT_FOUND` (no existence probing). The invitee accepts or declines in the h5. A member can leave; the lead can remove a member; the lead can dissolve the team. Leaving, removal and dissolution are refused (`TEAM_HAS_ACTIVE_WORK`) while the member (or, for dissolution, the team) is part of an application in `SUBMITTED/SHORTLISTED/SELECTED` or a contract `PENDING_SIGNATURES/ACTIVE`.
+3. **What engineers see of each other.** Team members (and invitees, for the team they are invited to) see each other's **alias, headline, skills and role** only. Never email, CV, education, portfolio links or partner reference.
+4. **Applying as a team.** Only the lead applies, choosing an `ACTIVE` team, the price per milestone (talent amounts, as §7) and a **split**: one `sharePct` per active member (> 0, two decimals, sum exactly 100). At that moment every member must be `APPROVED` (`PROFILE_NOT_APPROVED`) and have `SHARE_PROFILE_PSEUDONYMIZED` granted (`CONSENT_REQUIRED`, `data.aliases` lists who is missing it). An engineer takes part in at most one application per project, individual or team (`ALREADY_APPLIED`, `data.aliases`). The application stores a **snapshot** of the members and their shares; later changes of the team do not change it.
+5. **What the client sees.** A team application is a **team card**: team name and description plus the **pseudonymized profile of every member** (§1.5) with its role. One `transfer_event PSEUDONYMIZED_PROFILE` is written **per member** every time the card is shown (list, shortlist, select, decline). The full CV of a member is available only with **that member's** `SHARE_FULL_CV` for the project (`scopeRef = projectId`) and writes a `FULL_CV` event for that member only. The client never sees the split.
+6. **Hire.** Hiring a team application creates **one contract** (`CLIENT_SERVICES` unchanged, signed by the client; the professional named in it is "team «name»: alias, alias, …") and **one `ENGINEER_DELIVERABLES` document per member** (template `ENGINEER_DELIVERABLES_TEAM`), each with that member's alias, partner reference, share and own amounts. Each member accepts **their own** document; the contract becomes `ACTIVE` when the client and **all** members have accepted. Members are re-checked as `APPROVED` at hire.
+7. **Delivery.** The lead submits milestones (members: `TEAM_LEAD_ONLY`); any member can post messages and upload files; messages and files are visible to all members and the client. Engineers still see the client only by country, never the client price.
+8. **Money.** Client price per milestone = talent × (1 + fee) as §6, on the team's talent amount. Each member's amount per milestone = talent × sharePct / 100 rounded **down** to the cent; the lead receives the remaining cents, so the member amounts always add up to the milestone's talent amount. The monthly settlement creates **one line per member** per accepted milestone (`alias`, `partnerRef`, member amount); the partner API and CSV therefore list members separately. Earnings show each member's own amount.
+9. **Privacy inside the team.** A member's views of contracts, applications and teams never include another member's email, CV or partner reference, nor another member's deliverables agreement.
+
+### 12.2 Data model (`V2__teams.sql`)
+- `team(name, description, lead_user_id, status[ACTIVE|DISSOLVED])` — module `team`.
+- `team_member(team_id, user_id, role[LEAD|MEMBER], status[INVITED|ACTIVE|DECLINED|LEFT|REMOVED], invited_by_user_id, responded_at)` — UNIQUE(team_id, user_id).
+- `application.team_id NULL`; `application_member(application_id, project_id, engineer_user_id, role, share_pct)` — UNIQUE(project_id, engineer_user_id). For a team application `application.engineer_user_id` is the lead.
+- `contract.team_id NULL`, `contract.team_name NULL`; `contract_member(contract_id, engineer_user_id, role, share_pct)`; `contract_document.engineer_user_id NULL` (owner of an `ENGINEER_DELIVERABLES` document; unique per contract, kind and owner).
+- `settlement_line`: unique (contract_milestone_id, engineer_user_id) instead of contract_milestone_id.
+
+### 12.3 Endpoints (engineer)
+- `POST /api/engineer/teams {name, description}` → team (caller = lead). `GET /api/engineer/teams` → teams where the caller is an active member. `GET /api/engineer/teams/{id}`, `PUT /api/engineer/teams/{id} {name, description}` (lead).
+- Team view: `{id, name, description, status, leadAlias, myRole, myStatus, members:[{id, alias, headline, skills, role, status}], activeMembers, canApply, createdAt}` (members: ACTIVE and INVITED; the lead also sees DECLINED ones).
+- `POST /api/engineer/teams/{id}/invitations {alias}` (lead) → member row INVITED. Errors: `ENGINEER_NOT_FOUND` 404, `ALREADY_TEAM_MEMBER` 409, `TEAM_FULL` 409.
+- `GET /api/engineer/team-invitations` → `[{teamId, teamName, description, leadAlias, memberAliases, invitedAt}]`; `POST /api/engineer/teams/{id}/invitations/accept`, `/decline`.
+- `POST /api/engineer/teams/{id}/members/{memberId}/remove` (lead), `POST /api/engineer/teams/{id}/leave` (member), `POST /api/engineer/teams/{id}/dissolve` (lead).
+- `POST /api/engineer/projects/{id}/team-applications {teamId, coverNote, prices:[{milestoneId, talentAmountUsd}], shares:[{alias, sharePct}]}` (lead). Errors as §7 apply plus `TEAM_LEAD_ONLY` 403, `TEAM_TOO_SMALL` 409, `SHARES_SUM_MISMATCH` 400 and `VALIDATION_ERROR` on `shares` (members missing/duplicated/unknown).
+- `GET /api/engineer/applications` also returns the team applications where the caller is a member; team items add `team:{id, name, myRole, mySharePct, members:[{alias, role, sharePct}]}`. Only the lead can withdraw; every member records their own `cv-consent` on it.
+- `GET /api/engineer/contracts[/{id}]`: also contracts where the caller is a member. Team contracts add `team:{id, name, myRole, mySharePct, myTalentTotalUsd, members:[{alias, role, sharePct, accepted}]}`, milestones add `myAmountUsd`; `documents` holds only the caller's own document. `engineerAcceptedAt` is set when every member accepted.
+
+### 12.4 Endpoints (client)
+- `GET /api/client/projects/{id}/applications`: team items add `team:{name, description, members:[{alias, role, profile:<pseudonymized>, cvAvailable}]}`; `engineer` is the lead's pseudonymized profile and `cvAvailable` the lead's.
+- `GET /api/client/applications/{id}/cv?alias=QE-XXXX` → that member's CV (alias required for team applications; `CV_CONSENT_REQUIRED` per member).
+- Contract views add `team:{name, members:[{alias, role, accepted, acceptedAt}]}` (no shares). `engineerAcceptedAt` = when the last member accepted.
+
+## 13. Reviews — phase 1.1
+1. Once a contract is `COMPLETED` each side can leave **one** review: `{stars: 1–5, comment ≤ 1000 chars (optional)}`. Client side: any member of the client company (one review for the company). Engineer side: the engineer, or the **lead** of a team contract (members get `TEAM_LEAD_ONLY`).
+2. The client's stars update the engineer's `rating_avg` (running average, 2 decimals) and `rating_count` — for a team contract, those of **every member**. They are part of the pseudonymized profile (`ratingAvg`, `ratingCount`) that clients already see, and of the engineer's own profile.
+3. Review **texts** (both directions, including reviews about clients) are visible to the back-office only for now.
+4. Endpoints: `POST /api/client/contracts/{id}/review {stars, comment}` and `POST /api/engineer/contracts/{id}/review {stars, comment}` → `{stars, comment, createdAt}`; errors `CONTRACT_NOT_COMPLETED` 409, `ALREADY_REVIEWED` 409, `VALIDATION_ERROR` (stars outside 1–5). Contract detail views add `myReview` (the viewer side's review, null until written; in a team the lead's review is shown to every member) and `canReview`. Admin: `GET /api/admin/reviews?side=CLIENT|ENGINEER&page=&size=` (OPS, COMPLIANCE) → page of `{id, contractId, projectId, projectTitle, fromSide, fromLabel, toLabel, stars, comment, createdAt}` (labels: company name / engineer alias or team aliases).
+5. Data: `V3__reviews.sql` adds `review.from_side` and UNIQUE(contract_id, from_side). Account deletion clears the comments the user wrote; the stars stay (they feed ratings). Audit: `REVIEW_CREATED`.
+
+## 14. Admin two-factor authentication (TOTP) — phase 1.1
+1. RFC 6238: HMAC-SHA1, 6 digits, 30-second steps, ±1 step of drift. Secrets are 160 random bits, base32, generated server-side.
+2. Self-service for any admin (`/admin/profile` in the back-office): `POST /api/admin/me/totp/setup` → `{secret, otpauthUri, issuer, account}` (stored as a **pending** secret, replacing an unconfirmed one; `TOTP_ALREADY_ENABLED` 409 when active). The back-office renders `otpauthUri` as a QR code in the browser with a bundled library — no external service. `POST /api/admin/me/totp/enable {code}` activates the pending secret when the code is valid (`TOTP_SETUP_REQUIRED` 409, `TOTP_CODE_INVALID` 400). `POST /api/admin/me/totp/disable {code}` needs a valid code (`TOTP_NOT_ENABLED` 409, `TOTP_CODE_INVALID` 400). Enrolment errors are 400/409, never 401, so the apps do not mistake them for an expired session. Code attempts on these endpoints: 10 per minute per admin.
+3. `POST /api/admin/admins/{id}/totp/reset` (SUPERADMIN) removes another admin's TOTP (lost phone); they enrol again from their profile.
+4. **No replay**: `admin_user.totp_last_step` stores the time-step of the last accepted code; a code is accepted only for a **later** step. At login a reused code answers `TOTP_INVALID` and counts as a failed attempt (audit reason `REPLAYED_TOTP`).
+5. `GET /api/admin/me`, the login response `admin` and `GET /api/admin/admins` include `totpEnabled`. Data: `V4__admin_totp.sql`. Audit: `ADMIN_TOTP_ENABLED`, `ADMIN_TOTP_DISABLED`, `ADMIN_TOTP_RESET`.
+
+## 15. Stripe test mode without real keys
+- `STRIPE_API_BASE` (empty = `https://api.stripe.com`) points the Stripe SDK at another host; it exists to test against the official `stripe/stripe-mock` image and production refuses any other value at startup.
+- `StripePaymentIT` runs with `PAYMENT_PROVIDER=stripe` against `stripe/stripe-mock` (Testcontainers): checkout session creation, a correctly signed `checkout.session.completed` webhook (signature computed as Stripe documents: `t=<unix>,v1=hex(HMAC-SHA256(secret, t + "." + payload))`) that marks the payment PAID and the milestone FUNDED, idempotent retries, `async_payment_succeeded`, non-ASCII payloads, badly signed / tampered / expired / unsigned events (`400 INVALID_SIGNATURE`) and a refund after a dispute resolved as `REFUND`.

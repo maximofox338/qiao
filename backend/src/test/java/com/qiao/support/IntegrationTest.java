@@ -181,8 +181,15 @@ public abstract class IntegrationTest {
      * Registers an engineer with a complete profile, all consents and an approved review.
      */
     protected String approvedEngineer() {
+        return approvedEngineer(profileBody());
+    }
+
+    /**
+     * Same as {@link #approvedEngineer()} with a custom profile body.
+     */
+    protected String approvedEngineer(Map<String, Object> profile) {
         String token = register(uniqueEmail("engineer"), "ENGINEER");
-        put("/api/engineer/profile", token, profileBody()).ok();
+        put("/api/engineer/profile", token, profile).ok();
         grantConsent(token, "CROSS_BORDER_PROCESSING");
         grantConsent(token, "SHARE_PROFILE_PSEUDONYMIZED");
         long profileId = post("/api/engineer/profile/submit", token, null).ok().path("id").asLong();

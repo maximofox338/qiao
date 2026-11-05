@@ -11,6 +11,7 @@ import com.qiao.compliance.service.Actor;
 import com.qiao.compliance.service.AuditAction;
 import com.qiao.compliance.service.AuditService;
 import com.qiao.contract.domain.Contract;
+import com.qiao.contract.domain.ContractMember;
 import com.qiao.contract.domain.ContractMilestone;
 import com.qiao.contract.domain.ContractMilestoneMapper;
 import com.qiao.contract.domain.ContractStatus;
@@ -42,6 +43,7 @@ public class MilestoneService {
 
     private final ContractMilestoneMapper milestoneMapper;
     private final ContractService contractService;
+    private final ContractParties parties;
     private final ProjectService projectService;
     private final CompanyService companyService;
     private final EngineerProfileService profileService;
@@ -50,11 +52,12 @@ public class MilestoneService {
     private final Clock clock;
 
     public MilestoneService(ContractMilestoneMapper milestoneMapper, ContractService contractService,
-                            ProjectService projectService, CompanyService companyService,
+                            ContractParties parties, ProjectService projectService, CompanyService companyService,
                             EngineerProfileService profileService, ContractNotifier notifier,
                             AuditService auditService, Clock clock) {
         this.milestoneMapper = milestoneMapper;
         this.contractService = contractService;
+        this.parties = parties;
         this.projectService = projectService;
         this.companyService = companyService;
         this.profileService = profileService;
@@ -72,7 +75,7 @@ public class MilestoneService {
         if (locked.milestone().getStatus() != MilestoneStatus.PENDING_FUNDING) {
             throw new ApiException(ErrorCode.PAYMENT_ALREADY_PAID, "Milestone is already funded");
         }
-        return MilestoneRef.of(locked.milestone(), locked.contract());
+        return toRef(locked.milestone(), locked.contract());
     }
 
     /**
@@ -92,10 +95,16 @@ public class MilestoneService {
         return true;
     }
 
+    /**
+     * Only the engineer (or the lead of a team contract) submits; team members get {@code TEAM_LEAD_ONLY}.
+     */
     @Transactional
     public ContractMilestone submit(long engineerUserId, long milestoneId, String note) {
         Locked locked = lock(milestoneId);
         if (locked.contract().getEngineerUserId() != engineerUserId) {
+            if (parties.isEngineer(locked.contract(), engineerUserId)) {
+                throw new ApiException(ErrorCode.TEAM_LEAD_ONLY);
+            }
             throw ApiException.notFound("Milestone");
         }
         requireActive(locked.contract());
@@ -192,7 +201,7 @@ public class MilestoneService {
         if (milestone == null) {
             throw ApiException.notFound("Milestone");
         }
-        return MilestoneRef.of(milestone, contractService.get(milestone.getContractId()));
+        return toRef(milestone, contractService.get(milestone.getContractId()));
     }
 
     public List<MilestoneRef> refs(Collection<Long> milestoneIds) {
@@ -203,7 +212,7 @@ public class MilestoneService {
     }
 
     /**
-     * Milestones of the engineer's ACTIVE and COMPLETED contracts.
+     * Milestones of the engineer's ACTIVE and COMPLETED contracts (alone or as a team member).
      */
     public List<MilestoneRef> forEngineer(long engineerUserId) {
         Map<Long, Contract> contracts = contractService.listByEngineer(engineerUserId).stream()
@@ -212,11 +221,10 @@ public class MilestoneService {
         if (contracts.isEmpty()) {
             return List.of();
         }
-        return milestoneMapper.selectList(new LambdaQueryWrapper<ContractMilestone>()
-                        .in(ContractMilestone::getContractId, contracts.keySet())
-                        .orderByDesc(ContractMilestone::getContractId)
-                        .orderByAsc(ContractMilestone::getSeq))
-                .stream().map(m -> MilestoneRef.of(m, contracts.get(m.getContractId()))).toList();
+        return toRefs(milestoneMapper.selectList(new LambdaQueryWrapper<ContractMilestone>()
+                .in(ContractMilestone::getContractId, contracts.keySet())
+                .orderByDesc(ContractMilestone::getContractId)
+                .orderByAsc(ContractMilestone::getSeq)));
     }
 
     /**
@@ -283,6 +291,15 @@ public class MilestoneService {
 
     private List<MilestoneRef> toRefs(List<ContractMilestone> milestones) {
         Map<Long, Contract> contracts = contractService.byIds(milestones.stream().map(ContractMilestone::getContractId).collect(Collectors.toSet()));
-        return milestones.stream().map(m -> MilestoneRef.of(m, contracts.get(m.getContractId()))).toList();
+        Map<Long, List<ContractMember>> members = parties.membersByContract(contracts.values());
+        return milestones.stream().map(m -> {
+            Contract c = contracts.get(m.getContractId());
+            return MilestoneRef.of(m, c, ContractParties.payees(c, members.getOrDefault(c.getId(), List.of()), m.getTalentAmountUsd()));
+        }).toList();
+    }
+
+    private MilestoneRef toRef(ContractMilestone milestone, Contract contract) {
+        return MilestoneRef.of(milestone, contract,
+                ContractParties.payees(contract, parties.members(contract), milestone.getTalentAmountUsd()));
     }
 }

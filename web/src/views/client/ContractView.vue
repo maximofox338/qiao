@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeft, Download, Paperclip, Refresh, CircleCheckFilled } from '@element-plus/icons-vue'
+import { ArrowLeft, Download, Paperclip, Refresh, CircleCheckFilled, Star, StarFilled } from '@element-plus/icons-vue'
 import StatusTag from '@/components/StatusTag.vue'
 import MarkdownView from '@/components/MarkdownView.vue'
 import ReasonDialog from '@/components/ReasonDialog.vue'
@@ -35,6 +35,10 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const uploadMilestone = ref<number | null>(null)
 const uploading = ref(false)
 
+const reviewStars = ref(0)
+const reviewComment = ref('')
+const reviewing = ref(false)
+
 const reasonFor = ref<{ milestone: ContractMilestone; kind: 'revision' | 'dispute' } | null>(null)
 const reasonOpen = computed({
   get: () => !!reasonFor.value,
@@ -54,6 +58,8 @@ const attachments = computed<Attachment[]>(() => {
   return all.filter((a) => (seen.has(a.id) ? false : (seen.add(a.id), true)))
 })
 const isActive = computed(() => contract.value?.status === 'ACTIVE')
+const team = computed(() => contract.value?.team ?? null)
+const teamAccepted = computed(() => (team.value?.members ?? []).filter((m) => m.accepted).length)
 const milestoneLabel = (mid?: number | null) => {
   const m = milestones.value.find((x) => x.id === mid)
   return m ? t('contract.milestoneN', { n: m.seq, title: m.title }) : ''
@@ -161,6 +167,20 @@ async function submitReason(reason: string) {
   }
 }
 
+async function submitReview() {
+  if (!reviewStars.value) return
+  reviewing.value = true
+  try {
+    await clientApi.review(id.value, reviewStars.value, reviewComment.value.trim())
+    notifySuccess(t('contract.reviewSent'))
+    await load()
+  } catch (e) {
+    notifyError(e)
+  } finally {
+    reviewing.value = false
+  }
+}
+
 async function sendMessage() {
   const body = messageBody.value.trim()
   if (!body) return
@@ -230,7 +250,8 @@ const mine = (m: Message) => !!user.me && m.senderUserId === user.me.id
           <h1 data-testid="contract-title">{{ contract.projectTitle || t('contract.number', { id: contract.id }) }}</h1>
           <p class="q-sub">
             {{ t('contract.number', { id: contract.id }) }}
-            <template v-if="contract.engineerAlias"> · {{ t('contract.engineer') }}: {{ contract.engineerAlias }}</template>
+            <template v-if="team"> · <span data-testid="contract-team-name">{{ t('contract.team', { name: team.name ?? '' }) }}</span></template>
+            <template v-else-if="contract.engineerAlias"> · {{ t('contract.engineer') }}: {{ contract.engineerAlias }}</template>
             <template v-if="contract.projectId">
               · <router-link :to="`/client/projects/${contract.projectId}`" data-testid="contract-project-link">{{ t('contract.viewProject') }}</router-link>
             </template>
@@ -284,7 +305,32 @@ const mine = (m: Message) => !!user.me && m.senderUserId === user.me.id
             </div>
           </article>
         </div>
+        <template v-if="team">
+          <p
+            class="q-muted q-small engineer-agreement"
+            :data-testid="'contract-engineer-agreement'"
+            :data-status="contract.engineerAcceptedAt ? 'ACCEPTED' : 'PENDING'"
+          >
+            {{ t('contract.teamMembersAccepted', { done: teamAccepted, total: team.members.length }) }}
+          </p>
+          <ul class="team-members" data-testid="contract-team">
+            <li
+              v-for="m in team.members"
+              :key="m.alias"
+              :data-testid="`contract-team-member-${m.alias}`"
+              :data-status="m.accepted ? 'ACCEPTED' : 'PENDING'"
+            >
+              <span class="team-alias">{{ m.alias }}</span>
+              <el-tag size="small" effect="plain" :type="m.role === 'LEAD' ? 'warning' : 'info'">{{ t(`contract.teamRole.${m.role}`) }}</el-tag>
+              <span class="q-small" :class="m.accepted ? 'team-ok' : 'q-muted'">
+                {{ m.accepted ? t('contract.memberAccepted') : t('contract.memberPending') }}
+              </span>
+            </li>
+          </ul>
+          <p class="q-muted q-small">{{ t('contract.teamNote') }}</p>
+        </template>
         <p
+          v-else
           class="q-muted q-small engineer-agreement"
           :data-testid="'contract-engineer-agreement'"
           :data-status="contract.engineerAcceptedAt ? 'ACCEPTED' : 'PENDING'"
@@ -363,6 +409,47 @@ const mine = (m: Message) => !!user.me && m.senderUserId === user.me.id
             </div>
           </article>
         </div>
+      </section>
+
+      <section v-if="contract.status === 'COMPLETED'" class="q-card" data-testid="review">
+        <h2>{{ t('contract.reviewTitle') }}</h2>
+        <div v-if="contract.myReview" data-testid="review-done" :data-stars="contract.myReview.stars">
+          <el-rate :model-value="contract.myReview.stars" disabled />
+          <p v-if="contract.myReview.comment" class="q-pre review-comment">{{ contract.myReview.comment }}</p>
+          <p class="q-muted q-small">{{ t('contract.reviewThanks') }}</p>
+        </div>
+        <template v-else-if="contract.canReview">
+          <p class="q-muted q-small">{{ t('contract.reviewHint') }}</p>
+          <div class="stars" role="radiogroup" :aria-label="t('contract.reviewStars')">
+            <button
+              v-for="n in 5"
+              :key="n"
+              type="button"
+              class="star"
+              role="radio"
+              :aria-checked="reviewStars === n"
+              :aria-label="t('contract.reviewStarN', { n })"
+              :data-testid="`review-star-${n}`"
+              @click="reviewStars = n"
+            >
+              <el-icon :size="26"><StarFilled v-if="reviewStars >= n" /><Star v-else /></el-icon>
+            </button>
+          </div>
+          <el-input
+            v-model="reviewComment"
+            type="textarea"
+            :autosize="{ minRows: 2, maxRows: 5 }"
+            maxlength="1000"
+            show-word-limit
+            :placeholder="t('contract.reviewPlaceholder')"
+            data-testid="review-comment"
+          />
+          <div class="review-actions">
+            <el-button type="primary" :disabled="!reviewStars" :loading="reviewing" data-testid="review-submit" @click="submitReview">
+              {{ t('contract.reviewSubmit') }}
+            </el-button>
+          </div>
+        </template>
       </section>
 
       <div class="q-grid q-grid-2 bottom">
@@ -517,6 +604,46 @@ const mine = (m: Message) => !!user.me && m.senderUserId === user.me.id
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+.stars {
+  display: flex;
+  gap: 4px;
+  margin: 8px 0 12px;
+}
+.star {
+  border: 0;
+  background: none;
+  padding: 2px;
+  cursor: pointer;
+  color: #e6a23c;
+}
+.review-comment {
+  margin: 6px 0;
+}
+.review-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+.team-members {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+}
+.team-members li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--q-border);
+}
+.team-alias {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 600;
+}
+.team-ok {
+  color: #1e7a46;
+  font-weight: 600;
 }
 .hash {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

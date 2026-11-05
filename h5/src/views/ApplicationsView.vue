@@ -102,6 +102,13 @@ async function withdraw(id: Id) {
                 <span class="q-amount app__amount">{{ formatUsd(a.talentTotalUsd) }}</span>
               </span>
             </div>
+            <div v-if="a.team" class="app__team" :data-testid="`application-team-${a.id}`" :data-role="a.team.myRole ?? ''">
+              <van-icon name="friends-o" />
+              <span>{{ t('applications.teamBadge', { name: a.team.name ?? '', role: a.team.myRole ? t(`teams.role.${a.team.myRole}`) : '' }) }}</span>
+              <span v-if="a.team.mySharePct !== null && a.team.mySharePct !== undefined" class="app__share">
+                {{ t('applications.myShare', { pct: a.team.mySharePct }) }}
+              </span>
+            </div>
             <p v-if="a.coverNote" class="app__note">{{ a.coverNote }}</p>
 
             <!-- SELECTED: ask for the per-project full-CV consent -->
@@ -113,7 +120,7 @@ async function withdraw(id: Id) {
               </template>
               <template v-else>
                 <div class="cv-prompt__title"><van-icon name="fire-o" /> {{ t('applications.cvPromptTitle') }}</div>
-                <p class="cv-prompt__body">{{ t('applications.cvPromptBody') }}</p>
+                <p class="cv-prompt__body">{{ a.team ? t('applications.cvPromptTeam') : t('applications.cvPromptBody') }}</p>
                 <van-button
                   type="primary"
                   size="small"
@@ -127,7 +134,7 @@ async function withdraw(id: Id) {
               </template>
             </div>
 
-            <div v-if="WITHDRAWABLE.includes(a.status)" class="app__actions">
+            <div v-if="WITHDRAWABLE.includes(a.status) && (!a.team || a.team.myRole === 'LEAD')" class="app__actions">
               <van-button
                 size="small"
                 plain
@@ -172,6 +179,19 @@ async function withdraw(id: Id) {
 }
 .app__amount {
   margin-left: 6px;
+}
+.app__team {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--q-primary-dark);
+}
+.app__share {
+  margin-left: auto;
+  font-weight: 600;
 }
 .app__note {
   display: -webkit-box;

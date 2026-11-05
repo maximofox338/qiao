@@ -26,7 +26,7 @@ public record ProfileView(Long id, String alias, String headline, String bio, Li
                 p.getReviewNote(), p.getRatingAvg(), p.getRatingCount() == null ? 0 : p.getRatingCount());
     }
 
-    static List<String> listOrEmpty(List<String> values) {
+    public static List<String> listOrEmpty(List<String> values) {
         return values == null ? List.of() : values;
     }
 }

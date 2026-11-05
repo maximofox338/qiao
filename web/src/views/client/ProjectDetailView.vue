@@ -30,6 +30,7 @@ const busy = ref<string | null>(null)
 const hireTarget = ref<Application | null>(null)
 const cvOpen = ref(false)
 const cvFor = ref<Application | null>(null)
+const cvAlias = ref('')
 const cv = ref<EngineerCv | null>(null)
 const cvLoading = ref(false)
 const cvConsentRequired = ref(false)
@@ -115,15 +116,17 @@ async function confirmHire() {
   }
 }
 
-async function viewCv(app: Application) {
+/** For team applications `alias` picks the member: each member shares (or not) their own CV. */
+async function viewCv(app: Application, alias?: string) {
   cvFor.value = app
+  cvAlias.value = alias ?? app.engineer.alias
   cv.value = null
   cvConsentRequired.value = false
   cvError.value = ''
   cvOpen.value = true
   cvLoading.value = true
   try {
-    cv.value = await clientApi.cv(app.id)
+    cv.value = await clientApi.cv(app.id, alias)
   } catch (e) {
     if (isApiError(e, 'CV_CONSENT_REQUIRED')) cvConsentRequired.value = true
     else cvError.value = errorText(e)
@@ -137,6 +140,7 @@ const canSelect = (a: Application) => a.status === 'SUBMITTED' || a.status === '
 const canDecline = (a: Application) => ['SUBMITTED', 'SHORTLISTED', 'SELECTED'].includes(a.status)
 const canHire = (a: Application) => a.status === 'SELECTED' && project.value?.status === 'OPEN'
 const safeLink = (u: string) => (/^https?:\/\//i.test(u) ? u : undefined)
+const teamAliases = (a: Application) => (a.team?.members ?? []).map((m) => m.alias).join(', ')
 </script>
 
 <template>
@@ -256,7 +260,35 @@ const safeLink = (u: string) => (/^https?:\/\//i.test(u) ? u : undefined)
 
         <article v-for="a in sortedApps" :key="a.id" class="app" :class="`app-${a.status.toLowerCase()}`" :data-testid="`application-card-${a.id}`">
           <div class="app-top">
-            <EngineerCard :engineer="a.engineer" :testid-prefix="`application-${a.id}`" class="app-eng" />
+            <div v-if="a.team" class="app-eng team" :data-testid="`application-team-${a.id}`">
+              <div class="team-head">
+                <el-tag size="small" type="primary" effect="dark">{{ t('applications.teamBadge') }}</el-tag>
+                <strong class="team-name" :data-testid="`application-team-name-${a.id}`">
+                  {{ t('applications.teamTitle', { name: a.team.name ?? '' }) }}
+                </strong>
+                <span class="q-muted q-small">{{ t('applications.teamMembers', { n: a.team.members.length }) }}</span>
+              </div>
+              <p v-if="a.team.description" class="q-pre q-muted team-desc">{{ a.team.description }}</p>
+              <div
+                v-for="m in a.team.members"
+                :key="m.alias"
+                class="team-member"
+                :data-testid="`application-${a.id}-member-${m.alias}`"
+              >
+                <el-tag size="small" :type="m.role === 'LEAD' ? 'warning' : 'info'" effect="plain" class="team-role">
+                  {{ t(`applications.role.${m.role}`) }}
+                </el-tag>
+                <EngineerCard :engineer="m.profile" :testid-prefix="`application-${a.id}-member-${m.alias}`" />
+                <div class="team-member-cv">
+                  <el-button size="small" :data-testid="`application-${a.id}-member-${m.alias}-cv`" @click="viewCv(a, m.alias)">
+                    {{ t('applications.memberCv') }}
+                  </el-button>
+                  <span v-if="!m.cvAvailable" class="q-muted q-small">{{ t('applications.cvNotShared') }}</span>
+                </div>
+              </div>
+              <p class="q-muted q-small">{{ t('applications.teamNote') }}</p>
+            </div>
+            <EngineerCard v-else :engineer="a.engineer" :testid-prefix="`application-${a.id}`" class="app-eng" />
             <div class="app-price">
               <StatusTag :status="a.status" :testid="`application-status-${a.id}`" size="small" />
               <div class="price q-num" :data-testid="`application-total-${a.id}`">{{ money(a.clientTotalUsd) }}</div>
@@ -280,8 +312,10 @@ const safeLink = (u: string) => (/^https?:\/\//i.test(u) ? u : undefined)
           </details>
 
           <div class="app-actions">
-            <el-button size="small" :data-testid="`application-cv-${a.id}`" @click="viewCv(a)">{{ t('applications.viewCv') }}</el-button>
-            <span v-if="!a.cvAvailable" class="q-muted q-small cv-note">{{ t('applications.cvNotShared') }}</span>
+            <template v-if="!a.team">
+              <el-button size="small" :data-testid="`application-cv-${a.id}`" @click="viewCv(a)">{{ t('applications.viewCv') }}</el-button>
+              <span v-if="!a.cvAvailable" class="q-muted q-small cv-note">{{ t('applications.cvNotShared') }}</span>
+            </template>
             <div class="spacer" />
             <el-button
               v-if="canShortlist(a)"
@@ -330,16 +364,19 @@ const safeLink = (u: string) => (/^https?:\/\//i.test(u) ? u : undefined)
 
     <el-dialog
       :model-value="!!hireTarget"
-      :title="t('applications.hireTitle')"
+      :title="hireTarget?.team ? t('applications.hireTeamTitle') : t('applications.hireTitle')"
       width="480px"
       append-to-body
       data-testid="hire-dialog"
       @update:model-value="(v: boolean) => { if (!v) hireTarget = null }"
     >
-      <p v-if="hireTarget">
+      <p v-if="hireTarget?.team">
+        {{ t('applications.hireTeamText', { name: hireTarget.team.name ?? '', aliases: teamAliases(hireTarget), total: money(hireTarget.clientTotalUsd) }) }}
+      </p>
+      <p v-else-if="hireTarget">
         {{ t('applications.hireText', { alias: hireTarget.engineer.alias, total: money(hireTarget.clientTotalUsd) }) }}
       </p>
-      <p class="q-muted q-small">{{ t('applications.hireNote') }}</p>
+      <p class="q-muted q-small">{{ hireTarget?.team ? t('applications.hireTeamNote') : t('applications.hireNote') }}</p>
       <template #footer>
         <el-button data-testid="hire-cancel" @click="hireTarget = null">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" :loading="!!busy && busy.startsWith('hire')" data-testid="hire-confirm" @click="confirmHire">
@@ -348,7 +385,7 @@ const safeLink = (u: string) => (/^https?:\/\//i.test(u) ? u : undefined)
       </template>
     </el-dialog>
 
-    <el-dialog v-model="cvOpen" :title="t('applications.cvTitle', { alias: cvFor?.engineer.alias ?? '' })" width="640px" append-to-body data-testid="cv-dialog">
+    <el-dialog v-model="cvOpen" :title="t('applications.cvTitle', { alias: cvAlias })" width="640px" append-to-body data-testid="cv-dialog">
       <div v-loading="cvLoading" class="cv-body">
         <el-alert
           v-if="cvConsentRequired"
@@ -431,6 +468,34 @@ const safeLink = (u: string) => (/^https?:\/\//i.test(u) ? u : undefined)
 .app-price {
   text-align: right;
   flex-shrink: 0;
+}
+.team-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.team-name {
+  font-size: 1.05rem;
+  overflow-wrap: anywhere;
+}
+.team-desc {
+  margin: 6px 0 0;
+}
+.team-member {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px dashed var(--q-border);
+  border-radius: 8px;
+}
+.team-role {
+  margin-bottom: 8px;
+}
+.team-member-cv {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
 }
 .price {
   font-size: 1.25rem;

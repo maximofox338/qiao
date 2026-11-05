@@ -11,7 +11,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Renders {@code resources/contracts/{KIND}.{locale}.md} (en, zh-CN) by filling {@code {{placeholder}}} values.
+ * Renders {@code resources/contracts/{TEMPLATE}.{locale}.md} (en, zh-CN) by filling {@code {{placeholder}}} values.
  * Fails if a placeholder has no value, so an incomplete contract is never stored.
  */
 @Component
@@ -30,10 +30,17 @@ public class ContractTemplateRenderer {
     }
 
     public RenderedDocument render(DocumentKind kind, String locale, Map<String, String> values) {
+        return render(kind.name(), locale, values);
+    }
+
+    /**
+     * @param templateName file name without locale, e.g. {@code ENGINEER_DELIVERABLES_TEAM}
+     */
+    public RenderedDocument render(String templateName, String locale, Map<String, String> values) {
         String templateLocale = templateLocale(locale);
         FrontMatterDocument template = FrontMatterDocument
-                .loadClasspath("contracts/" + kind.name() + "." + templateLocale + ".md")
-                .orElseThrow(() -> new IllegalStateException("Missing contract template " + kind + "/" + templateLocale));
+                .loadClasspath("contracts/" + templateName + "." + templateLocale + ".md")
+                .orElseThrow(() -> new IllegalStateException("Missing contract template " + templateName + "/" + templateLocale));
         Matcher matcher = PLACEHOLDER.matcher(template.body());
         StringBuilder body = new StringBuilder();
         while (matcher.find()) {

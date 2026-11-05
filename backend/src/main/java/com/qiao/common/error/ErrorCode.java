@@ -57,7 +57,23 @@ public enum ErrorCode {
     PAYMENT_PROVIDER_NOT_FAKE(HttpStatus.CONFLICT, "Test payments are not enabled"),
     PAYMENT_ALREADY_PAID(HttpStatus.CONFLICT, "Already paid"),
     INVALID_SIGNATURE(HttpStatus.BAD_REQUEST, "Invalid signature"),
-    NOTHING_TO_SETTLE(HttpStatus.CONFLICT, "No accepted and paid milestones to settle");
+    NOTHING_TO_SETTLE(HttpStatus.CONFLICT, "No accepted and paid milestones to settle"),
+
+    ENGINEER_NOT_FOUND(HttpStatus.NOT_FOUND, "No approved engineer with that alias"),
+    ALREADY_TEAM_MEMBER(HttpStatus.CONFLICT, "Already a member of the team or invited"),
+    TEAM_FULL(HttpStatus.CONFLICT, "A team has at most 10 members"),
+    TEAM_LEAD_ONLY(HttpStatus.FORBIDDEN, "Only the team lead can do this"),
+    TEAM_TOO_SMALL(HttpStatus.CONFLICT, "A team needs at least two active members to apply"),
+    TEAM_HAS_ACTIVE_WORK(HttpStatus.CONFLICT, "The team has active applications or contracts"),
+    SHARES_SUM_MISMATCH(HttpStatus.BAD_REQUEST, "Shares must add up to 100"),
+
+    CONTRACT_NOT_COMPLETED(HttpStatus.CONFLICT, "Reviews open once the contract is completed"),
+    ALREADY_REVIEWED(HttpStatus.CONFLICT, "This side already reviewed the contract"),
+
+    TOTP_ALREADY_ENABLED(HttpStatus.CONFLICT, "Two-factor authentication is already enabled"),
+    TOTP_NOT_ENABLED(HttpStatus.CONFLICT, "Two-factor authentication is not enabled"),
+    TOTP_SETUP_REQUIRED(HttpStatus.CONFLICT, "Start the authenticator setup first"),
+    TOTP_CODE_INVALID(HttpStatus.BAD_REQUEST, "Invalid or already used authenticator code");
 
     private final HttpStatus status;
     private final String defaultMessage;

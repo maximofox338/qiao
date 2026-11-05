@@ -16,6 +16,10 @@ import java.time.Instant;
 public class ContractDocument extends BaseEntity {
     private Long contractId;
     private DocumentKind kind;
+    /**
+     * Owner of an ENGINEER_DELIVERABLES document (one per member in team contracts); null for CLIENT_SERVICES.
+     */
+    private Long engineerUserId;
     private String templateVersion;
     private String locale;
     private String body;

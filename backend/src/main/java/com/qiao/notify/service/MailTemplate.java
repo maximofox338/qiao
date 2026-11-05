@@ -17,7 +17,8 @@ public enum MailTemplate {
     MILESTONE_FUNDED("milestone.funded", false),
     MILESTONE_SUBMITTED("milestone.submitted", false),
     MILESTONE_ACCEPTED("milestone.accepted", false),
-    MILESTONE_REVISION_REQUESTED("milestone.revision", false);
+    MILESTONE_REVISION_REQUESTED("milestone.revision", false),
+    TEAM_INVITATION("team.invitation", false);
 
     private final String key;
     private final boolean sensitive;

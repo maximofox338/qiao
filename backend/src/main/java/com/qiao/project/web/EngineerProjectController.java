@@ -46,4 +46,11 @@ public class EngineerProjectController {
                                                       @PathVariable long id, @Valid @RequestBody ApplyRequest request) {
         return ApiResponse.ok(applicationService.apply(principal.id(), id, request));
     }
+
+    @PostMapping("/{id}/team-applications")
+    public ApiResponse<EngineerApplicationView> applyAsTeam(@AuthenticationPrincipal AuthPrincipal principal,
+                                                            @PathVariable long id,
+                                                            @Valid @RequestBody TeamApplyRequest request) {
+        return ApiResponse.ok(applicationService.applyAsTeam(principal.id(), id, request));
+    }
 }

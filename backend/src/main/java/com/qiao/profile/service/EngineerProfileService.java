@@ -29,6 +29,8 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Clock;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -202,6 +204,19 @@ public class EngineerProfileService implements OnboardingStatusProvider {
                 .collect(Collectors.toMap(EngineerProfile::getUserId, PseudonymizedProfile::from));
     }
 
+    /**
+     * The APPROVED profile with this alias (case-insensitive), if any. Used to invite engineers to teams.
+     */
+    public Optional<EngineerProfile> findApprovedByAlias(String alias) {
+        String normalized = Texts.trimToNull(alias);
+        if (normalized == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(profileMapper.selectOne(new LambdaQueryWrapper<EngineerProfile>()
+                        .eq(EngineerProfile::getAlias, normalized.toUpperCase(java.util.Locale.ROOT))))
+                .filter(p -> p.getStatus() == ProfileStatus.APPROVED);
+    }
+
     public Map<Long, String> aliases(Collection<Long> userIds) {
         return byUserIds(userIds).values().stream()
                 .collect(Collectors.toMap(EngineerProfile::getUserId, EngineerProfile::getAlias));
@@ -257,6 +272,23 @@ public class EngineerProfileService implements OnboardingStatusProvider {
 
     public Map<String, Long> countByStatus() {
         return StatusCounts.count(profileMapper, ProfileStatus.class);
+    }
+
+    /**
+     * Adds a client review to the engineer's rating (running average, two decimals) under a row lock.
+     */
+    public void addRating(long userId, int stars) {
+        EngineerProfile profile = findByUserId(userId).orElse(null);
+        if (profile == null) {
+            return;
+        }
+        EngineerProfile locked = profileMapper.selectByIdForUpdate(profile.getId());
+        int count = locked.getRatingCount() == null ? 0 : locked.getRatingCount();
+        BigDecimal total = (locked.getRatingAvg() == null ? BigDecimal.ZERO : locked.getRatingAvg())
+                .multiply(BigDecimal.valueOf(count)).add(BigDecimal.valueOf(stars));
+        locked.setRatingCount(count + 1);
+        locked.setRatingAvg(total.divide(BigDecimal.valueOf(count + 1L), 2, RoundingMode.HALF_UP));
+        profileMapper.updateById(locked);
     }
 
     /**

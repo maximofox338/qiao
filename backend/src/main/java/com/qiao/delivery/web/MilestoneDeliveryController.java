@@ -2,6 +2,7 @@ package com.qiao.delivery.web;
 
 import com.qiao.common.api.ApiResponse;
 import com.qiao.common.security.AuthPrincipal;
+import com.qiao.contract.service.ContractService;
 import com.qiao.contract.service.MilestoneService;
 import com.qiao.contract.web.ClientMilestoneView;
 import com.qiao.contract.web.EngineerMilestoneView;
@@ -18,17 +19,20 @@ public class MilestoneDeliveryController {
 
     private final DeliveryService deliveryService;
     private final MilestoneService milestoneService;
+    private final ContractService contractService;
 
-    public MilestoneDeliveryController(DeliveryService deliveryService, MilestoneService milestoneService) {
+    public MilestoneDeliveryController(DeliveryService deliveryService, MilestoneService milestoneService,
+                                       ContractService contractService) {
         this.deliveryService = deliveryService;
         this.milestoneService = milestoneService;
+        this.contractService = contractService;
     }
 
     @PostMapping("/api/engineer/milestones/{id}/submit")
     public ApiResponse<EngineerMilestoneView> submit(@AuthenticationPrincipal AuthPrincipal principal,
                                                      @PathVariable long id,
                                                      @Valid @RequestBody SubmitMilestoneRequest request) {
-        return ApiResponse.ok(EngineerMilestoneView.from(
+        return ApiResponse.ok(contractService.engineerMilestoneView(principal.id(),
                 deliveryService.submit(principal.id(), id, request.note(), request.attachmentIds())));
     }
 

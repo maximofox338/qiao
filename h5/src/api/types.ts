@@ -122,6 +122,56 @@ export interface ApplicationPrice {
   talentAmountUsd: number | string
 }
 
+export type TeamRole = 'LEAD' | 'MEMBER'
+export type TeamMemberStatus = 'INVITED' | 'ACTIVE' | 'DECLINED' | 'LEFT' | 'REMOVED'
+
+/** Teammates are shown by alias, headline and skills only (spec §12). */
+export interface TeamMember {
+  id: Id
+  alias: string
+  headline?: string | null
+  skills?: string[]
+  role: TeamRole
+  status: TeamMemberStatus
+}
+
+export interface Team {
+  id: Id
+  name: string
+  description?: string | null
+  status: 'ACTIVE' | 'DISSOLVED'
+  leadAlias?: string | null
+  myRole?: TeamRole | null
+  myStatus?: TeamMemberStatus | null
+  members: TeamMember[]
+  activeMembers: number
+  canApply: boolean
+  createdAt?: string
+}
+
+export interface TeamInvitation {
+  teamId: Id
+  teamName: string
+  description?: string | null
+  leadAlias?: string | null
+  memberAliases: string[]
+  invitedAt?: string
+}
+
+export interface TeamShare {
+  alias: string
+  role?: TeamRole
+  sharePct: number | string
+}
+
+export interface ApplicationTeam {
+  id: Id
+  name?: string | null
+  myRole?: TeamRole | null
+  mySharePct?: number | string | null
+  members: TeamShare[]
+}
+
 export interface Application {
   id: Id
   projectId: Id
@@ -131,6 +181,8 @@ export interface Application {
   talentTotalUsd?: number | string
   prices?: ApplicationPrice[]
   createdAt?: string
+  /** Set for team applications. */
+  team?: ApplicationTeam | null
 }
 
 export type ContractStatus = 'PENDING_SIGNATURES' | 'ACTIVE' | 'COMPLETED' | 'TERMINATED'
@@ -167,6 +219,24 @@ export interface ContractMilestone {
   acceptedAt?: string | null
   disputeReason?: string | null
   revisionReason?: string | null
+  /** The viewer's own part of the milestone (equals talentAmountUsd for individual contracts). */
+  myAmountUsd?: number | string | null
+}
+
+export interface ContractTeamMember {
+  alias: string
+  role: TeamRole
+  sharePct: number | string
+  accepted: boolean
+}
+
+export interface ContractTeam {
+  id: Id
+  name?: string | null
+  myRole?: TeamRole | null
+  mySharePct?: number | string | null
+  myTalentTotalUsd?: number | string | null
+  members: ContractTeamMember[]
 }
 
 export interface ContractSummary {
@@ -179,9 +249,21 @@ export interface ContractSummary {
   completedAt?: string | null
   createdAt?: string | null
   milestones?: ContractMilestone[]
+  /** Set for team contracts. */
+  team?: ContractTeam | null
+}
+
+export interface ReviewSummary {
+  stars: number
+  comment?: string | null
+  createdAt?: string | null
 }
 
 export interface ContractDetail extends ContractSummary {
+  /** The engineer side's review of the client (written by the lead in a team), once COMPLETED. */
+  myReview?: ReviewSummary | null
+  /** True for the engineer (or the team lead) while the review is missing on a COMPLETED contract. */
+  canReview?: boolean
   /** Each party only receives its own document; the other party's acceptance comes as a timestamp. */
   clientAcceptedAt?: string | null
   engineerAcceptedAt?: string | null
@@ -192,6 +274,9 @@ export interface ContractDetail extends ContractSummary {
 export interface Message {
   id: Id
   senderUserId: Id
+  senderSide?: 'CLIENT' | 'ENGINEER'
+  /** Engineer messages carry the sender's alias; client messages carry none for engineers. */
+  senderAlias?: string | null
   body: string
   flagged?: boolean
   createdAt?: string

@@ -24,10 +24,11 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
+import java.util.OptionalLong;
 import java.util.UUID;
 
 /**
- * Admin password login with lockout after repeated failures and optional TOTP. Not transactional as a whole: each
+ * Admin password login with lockout after repeated failures and optional TOTP (each code accepted once). Not transactional as a whole: each
  * attempt runs in its own short transaction so that failure counters persist even though the request fails.
  */
 @Service
@@ -81,8 +82,7 @@ public class AdminAuthService {
         AdminUser admin = attempt.admin();
         IssuedToken token = jwtService.issueAdminToken(admin.getId(),
                 admin.roleSet().stream().map(AdminRole::name).toList());
-        return new AdminLoginResponse(token.token(), new AdminLoginResponse.Admin(admin.getId(), admin.getEmail(),
-                admin.roleSet()));
+        return new AdminLoginResponse(token.token(), AdminLoginResponse.Admin.from(admin));
     }
 
     private Attempt attempt(long adminId, String password, String totp) {
@@ -98,18 +98,23 @@ public class AdminAuthService {
             registerFailure(admin, "BAD_PASSWORD", now);
             return Attempt.failed(ErrorCode.INVALID_CREDENTIALS);
         }
+        Long totpStep = null;
         if (admin.getTotpSecret() != null) {
             if (totp == null || totp.isBlank()) {
                 return Attempt.failed(ErrorCode.TOTP_REQUIRED);
             }
-            if (!totpVerifier.verify(admin.getTotpSecret(), totp.trim())) {
-                registerFailure(admin, "BAD_TOTP", now);
+            // a code is valid once: its time-step must be later than the last accepted one (no replay)
+            OptionalLong step = totpVerifier.matchStep(admin.getTotpSecret(), totp.trim());
+            if (step.isEmpty() || (admin.getTotpLastStep() != null && step.getAsLong() <= admin.getTotpLastStep())) {
+                registerFailure(admin, step.isEmpty() ? "BAD_TOTP" : "REPLAYED_TOTP", now);
                 return Attempt.failed(ErrorCode.TOTP_INVALID);
             }
+            totpStep = step.getAsLong();
         }
         adminMapper.update(null, new LambdaUpdateWrapper<AdminUser>()
                 .set(AdminUser::getFailedAttempts, 0)
                 .set(AdminUser::getLockedUntil, null)
+                .set(totpStep != null, AdminUser::getTotpLastStep, totpStep)
                 .set(AdminUser::getUpdatedAt, now)
                 .eq(AdminUser::getId, admin.getId()));
         auditService.log(Actor.admin(admin.getId()), AuditAction.ADMIN_LOGIN, "admin_user", admin.getId());

@@ -33,6 +33,6 @@ public class AdminAuthController {
     @GetMapping("/me")
     public ApiResponse<AdminLoginResponse.Admin> me(@AuthenticationPrincipal AuthPrincipal principal) {
         AdminUser admin = adminUserService.get(principal.id());
-        return ApiResponse.ok(new AdminLoginResponse.Admin(admin.getId(), admin.getEmail(), admin.roleSet()));
+        return ApiResponse.ok(AdminLoginResponse.Admin.from(admin));
     }
 }

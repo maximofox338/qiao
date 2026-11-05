@@ -21,7 +21,9 @@ Paquete `com.qiao`, un subpaquete por módulo, cada uno con `domain` (entidades,
 | `compliance` | consentimientos, `transfer_event`, auditoría, textos legales (`resources/legal`), palabras clave |
 | `moderation` | revisiones del back-office (empresas, ingenieros, proyectos, disputas) |
 | `notify` | correo y `mail_outbox` |
-| `admin` | administradores, login, panel, arranque del primer admin y datos demo |
+| `admin` | administradores, login, TOTP (alta con QR, desactivación, reinicio por SUPERADMIN), panel, arranque del primer admin y datos demo |
+| `team` | equipos de ingenieros, invitaciones por alias (las postulaciones y contratos de equipo viven en `project` y `contract`) |
+| `review` | valoraciones tras un contrato completado (una por lado) y su listado en el back-office |
 
 Reglas: cada módulo es dueño de sus tablas; nada de JOIN entre módulos (se llama al servicio del otro módulo).
 Las comprobaciones de propiedad se hacen en los servicios.
@@ -42,7 +44,8 @@ curl localhost:8080/api/health
 curl localhost:8080/api/public/categories
 ```
 
-- Flyway crea el esquema (`db/migration/V1__init.sql`) y las categorías.
+- Flyway crea el esquema (`db/migration/V1__init.sql`) y las categorías; `V2__teams.sql`, `V3__reviews.sql` y
+  `V4__admin_totp.sql` añaden equipos, valoraciones y TOTP de administradores.
 - Admin de desarrollo: `admin@qiao.local` / `QiaoAdmin-dev-2026` (SUPERADMIN).
 - Datos demo (`APP_DEMO_SEED=true`, solo perfil `dev`, idempotente): cliente `client@demo.qiao` con empresa aprobada,
   ingeniero `engineer@demo.qiao` aprobado (`partnerRef` `PARTNER-DEMO-001`) y un proyecto OPEN con dos hitos.
@@ -74,6 +77,7 @@ Sin perfil se usa la configuración base (`application.yml`), que exige todas la
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | con `smtp` | servidor SMTP (SSL, puerto 465 por defecto) |
 | `PAYMENT_PROVIDER` | no (`fake`; `stripe` en prod) | `fake` o `stripe` |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | con `stripe` | sin ellas el arranque falla si el proveedor es `stripe` |
+| `STRIPE_API_BASE` | no (vacía) | solo para pruebas contra `stripe/stripe-mock`; en producción debe quedar vacía (o `https://api.stripe.com`) o el arranque falla |
 | `PLATFORM_FEE_PCT` | no (`25`) | comisión de la plataforma en % |
 | `STORAGE` | no (`local`) | `local` u `oss` |
 | `STORAGE_LOCAL_DIR` | no (`/data/uploads`) | carpeta de adjuntos con `STORAGE=local` |
@@ -94,7 +98,18 @@ Docker. Cubren registro/login OTP de ambos roles, bloqueo de OTP, declaraciones 
 reglas de proyecto (categoría prohibida, suma de hitos, duración > 12 meses, palabras de empleo marcadas),
 aprobación de proyecto e ingeniero, consentimientos, postulación, perfil seudonimizado y `transfer_event`, CV con
 consentimiento, contratación, aceptación de documentos, pago fake, entrega y aceptación, liquidación + CSV + API del
-socio, borrado de cuenta y bloqueo del admin tras 5 contraseñas erróneas.
+socio, borrado de cuenta y bloqueo del admin tras 5 contraseñas erróneas. Además:
+
+- `TeamFlowIT`: equipos de punta a punta (invitación, reparto, consentimiento por miembro, tarjeta de equipo con un
+  `transfer_event` por miembro, CV por miembro, un acuerdo por miembro, entrega del líder, una línea de liquidación
+  por miembro) y la confidencialidad entre miembros.
+- `ReviewIT`: valoraciones de ambos lados, promedio en el perfil seudonimizado, textos solo para el back-office.
+- `AdminTotpIT` / `TotpVerifierTest`: alta de TOTP, login sin reutilizar el mismo paso de 30 s, desactivación y
+  reinicio por SUPERADMIN.
+- `StripePaymentIT`: `PAYMENT_PROVIDER=stripe` contra la imagen oficial `stripe/stripe-mock:v0.197.0`
+  (Testcontainers, se descarga de Docker Hub la primera vez): creación de la sesión de checkout, webhook
+  `checkout.session.completed` firmado como documenta Stripe, firmas inválidas y reembolso. Arranca un segundo
+  contexto de Spring (y un segundo MySQL).
 
 ## Docker
 

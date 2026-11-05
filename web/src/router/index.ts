@@ -29,7 +29,9 @@ export const ADMIN_SECTIONS: Array<{ name: string; path: string; titleKey: strin
   { name: 'admin-compliance', path: 'compliance', titleKey: 'admin.menu.compliance', roles: ['COMPLIANCE'], icon: 'Lock' },
   { name: 'admin-categories', path: 'categories', titleKey: 'admin.menu.categories', roles: ['COMPLIANCE'], icon: 'CollectionTag' },
   { name: 'admin-outbox', path: 'outbox', titleKey: 'admin.menu.outbox', roles: ['OPS', 'COMPLIANCE'], icon: 'Message' },
+  { name: 'admin-reviews', path: 'reviews', titleKey: 'admin.menu.reviews', roles: ['OPS', 'COMPLIANCE'], icon: 'Star' },
   { name: 'admin-admins', path: 'admins', titleKey: 'admin.menu.admins', roles: ['SUPERADMIN'], icon: 'Key' },
+  { name: 'admin-profile', path: 'profile', titleKey: 'admin.menu.profile', icon: 'Avatar' },
 ]
 
 const adminViews: Record<string, () => Promise<unknown>> = {
@@ -42,7 +44,9 @@ const adminViews: Record<string, () => Promise<unknown>> = {
   'admin-compliance': () => import('@/views/admin/AdminComplianceView.vue'),
   'admin-categories': () => import('@/views/admin/AdminCategoriesView.vue'),
   'admin-outbox': () => import('@/views/admin/AdminOutboxView.vue'),
+  'admin-reviews': () => import('@/views/admin/AdminReviewsView.vue'),
   'admin-admins': () => import('@/views/admin/AdminAdminsView.vue'),
+  'admin-profile': () => import('@/views/admin/AdminProfileView.vue'),
 }
 
 export const router = createRouter({

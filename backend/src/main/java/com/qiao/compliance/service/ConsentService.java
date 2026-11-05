@@ -85,7 +85,7 @@ public class ConsentService {
     }
 
     /**
-     * Users (among {@code userIds}) whose latest consent of {@code type} for {@code scopeRef} is granted.
+     * Users (among {@code userIds}) whose latest consent of {@code type} for {@code scopeRef} (null = unscoped) is granted.
      */
     public Set<Long> usersWithGrant(Collection<Long> userIds, ConsentType type, String scopeRef) {
         if (userIds.isEmpty()) {
@@ -94,7 +94,8 @@ public class ConsentService {
         List<Consent> rows = consentMapper.selectList(new LambdaQueryWrapper<Consent>()
                 .in(Consent::getUserId, userIds)
                 .eq(Consent::getType, type)
-                .eq(Consent::getScopeRef, scopeRef)
+                .eq(scopeRef != null, Consent::getScopeRef, scopeRef)
+                .isNull(scopeRef == null, Consent::getScopeRef)
                 .orderByDesc(Consent::getId));
         Set<Long> seen = new HashSet<>();
         Set<Long> granted = new HashSet<>();

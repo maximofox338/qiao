@@ -62,6 +62,10 @@ function progress(c: ContractSummary) {
               <h3 class="contract__title">{{ c.projectTitle || t('common.projectRef', { id: c.projectId ?? c.id }) }}</h3>
               <StatusTag kind="contract" :status="c.status" />
             </div>
+            <div v-if="c.team" class="contract__team" :data-testid="`contract-card-team-${c.id}`">
+              <van-icon name="friends-o" /> {{ t('contract.teamName', { name: c.team.name ?? '' }) }}
+              · {{ c.team.myRole ? t(`teams.role.${c.team.myRole}`) : '' }}
+            </div>
             <div v-if="c.status === 'PENDING_SIGNATURES'" class="contract__todo">
               <van-icon name="edit" /> {{ t('contracts.signNeeded') }}
             </div>
@@ -79,7 +83,7 @@ function progress(c: ContractSummary) {
               <span class="q-muted">{{ formatDate(c.activatedAt || c.createdAt) }}</span>
               <span v-if="c.talentTotalUsd !== undefined && c.talentTotalUsd !== null">
                 <span class="q-muted">{{ t('contracts.total') }}</span>
-                <span class="q-amount contract__amount">{{ formatUsd(c.talentTotalUsd) }}</span>
+                <span class="q-amount contract__amount">{{ formatUsd(c.team?.myTalentTotalUsd ?? c.talentTotalUsd) }}</span>
               </span>
             </div>
           </router-link>
@@ -90,6 +94,11 @@ function progress(c: ContractSummary) {
 </template>
 
 <style scoped>
+.contract__team {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--q-primary-dark);
+}
 .contracts__page {
   min-height: calc(100vh - 100px);
 }

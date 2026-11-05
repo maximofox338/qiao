@@ -5,7 +5,9 @@ import { Plus, Refresh } from '@element-plus/icons-vue'
 import { adminApi } from '@/api/admin'
 import type { AdminAccount, AdminRole } from '@/api/types'
 import { normaliseRoles } from '@/stores/admin'
-import { errorText, fieldErrorsOf, notifySuccess } from '@/utils/errors'
+import { ElMessageBox } from 'element-plus'
+import { useAdminStore } from '@/stores/admin'
+import { errorText, fieldErrorsOf, notifyError, notifySuccess } from '@/utils/errors'
 import { dateTime } from '@/utils/format'
 
 const { t } = useI18n()
@@ -33,6 +35,32 @@ async function load() {
 }
 
 onMounted(load)
+
+const me = useAdminStore()
+const resetting = ref<number | null>(null)
+
+/** SUPERADMIN removes another admin's authenticator (lost phone); they can enrol again from their profile. */
+async function resetTotp(row: AdminAccount) {
+  try {
+    await ElMessageBox.confirm(t('admin.admins.totpResetConfirm', { email: row.email }), t('admin.admins.totpReset'), {
+      type: 'warning',
+      confirmButtonText: t('admin.admins.totpReset'),
+      cancelButtonText: t('common.cancel'),
+    })
+  } catch {
+    return
+  }
+  resetting.value = row.id
+  try {
+    await adminApi.resetTotp(row.id)
+    notifySuccess(t('admin.admins.totpResetDone'))
+    await load()
+  } catch (e) {
+    notifyError(e)
+  } finally {
+    resetting.value = null
+  }
+}
 
 async function create() {
   createError.value = ''
@@ -83,8 +111,23 @@ async function create() {
               </div>
             </template>
           </el-table-column>
-          <el-table-column :label="t('admin.admins.totp')" width="90">
-            <template #default="{ row }">{{ row.totpEnabled ? t('common.yes') : t('common.no') }}</template>
+          <el-table-column :label="t('admin.admins.totp')" width="190">
+            <template #default="{ row }">
+              <span :data-testid="`admin-admins-totp-${row.id}`" :data-status="row.totpEnabled ? 'ENABLED' : 'DISABLED'">
+                {{ row.totpEnabled ? t('common.yes') : t('common.no') }}
+              </span>
+              <el-button
+                v-if="row.totpEnabled && row.id !== me.admin?.id"
+                size="small"
+                text
+                type="danger"
+                :loading="resetting === row.id"
+                :data-testid="`admin-admins-totp-reset-${row.id}`"
+                @click="resetTotp(row as AdminAccount)"
+              >
+                {{ t('admin.admins.totpReset') }}
+              </el-button>
+            </template>
           </el-table-column>
           <el-table-column :label="t('admin.settlements.createdAt')" width="170">
             <template #default="{ row }">{{ dateTime(row.createdAt) }}</template>

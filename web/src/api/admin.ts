@@ -6,7 +6,9 @@ import type {
   AdminDashboard,
   AdminEngineer,
   AdminInfo,
+  TotpSetup,
   AdminLoginResponse,
+  AdminReview,
   AdminRole,
   AuditEntry,
   Dispute,
@@ -27,6 +29,10 @@ export const adminApi = {
       { skipAuthRedirect: true },
     ),
   me: () => api.get<AdminInfo>('/api/admin/me'),
+  totpSetup: () => api.post<TotpSetup>('/api/admin/me/totp/setup'),
+  totpEnable: (code: string) => api.post<AdminInfo>('/api/admin/me/totp/enable', { code }),
+  totpDisable: (code: string) => api.post<AdminInfo>('/api/admin/me/totp/disable', { code }),
+  resetTotp: (adminId: number) => api.post<AdminAccount>(`/api/admin/admins/${adminId}/totp/reset`),
   dashboard: () => api.get<AdminDashboard>('/api/admin/dashboard'),
 
   companies: async (status: string, page: number, size: number) =>
@@ -67,6 +73,9 @@ export const adminApi = {
 
   outbox: async (page: number, size: number) =>
     asPage(await api.get<ListOrPage<OutboxMail>>('/api/admin/outbox', { page, size }), page, size),
+
+  reviews: async (side: string, page: number, size: number) =>
+    asPage(await api.get<ListOrPage<AdminReview>>('/api/admin/reviews', { side, page, size }), page, size),
 
   admins: async () => asList(await api.get<ListOrPage<AdminAccount>>('/api/admin/admins')),
   createAdmin: (body: { email: string; password: string; roles: AdminRole[] }) =>

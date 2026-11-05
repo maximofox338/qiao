@@ -14,9 +14,11 @@ import com.qiao.profile.service.EngineerProfileService;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
 
 /**
- * Contract chat between the client company and the engineer. Messages matching compliance keywords are flagged.
+ * Contract chat between the client company and the engineer (or every member of a team). Messages matching
+ * compliance keywords are flagged.
  */
 @Service
 public class MessageService {
@@ -42,7 +44,7 @@ public class MessageService {
         return messageMapper.selectList(new LambdaQueryWrapper<Message>()
                         .eq(Message::getContractId, contractId)
                         .orderByAsc(Message::getId))
-                .stream().map(m -> view(m, participant.contract(), names)).toList();
+                .stream().map(m -> view(m, names)).toList();
     }
 
     public MessageView post(long userId, long contractId, String body) {
@@ -53,7 +55,7 @@ public class MessageService {
         message.setBody(body.trim());
         message.setFlagged(keywordScanner.matchesAny(message.getBody()));
         messageMapper.insert(message);
-        return view(message, participant.contract(), names(participant));
+        return view(message, names(participant));
     }
 
     List<Message> sentBy(long userId) {
@@ -62,23 +64,24 @@ public class MessageService {
                 .orderByAsc(Message::getId));
     }
 
-    private record Names(String client, String engineer) {
+    private record Names(String client, List<Long> engineerIds, Map<Long, String> engineers) {
     }
 
     /**
-     * Engineers know the client only by its country: the company name is shown to the client side only.
+     * Engineers know the client only by its country: the company name is shown to the client side only. Engineer
+     * messages carry the sender's own alias (team members each have theirs).
      */
     private Names names(ContractParticipant viewer) {
         Contract contract = viewer.contract();
         String client = viewer.side() == UserRole.CLIENT ? companyService.get(contract.getCompanyId()).getName() : null;
-        return new Names(client,
-                profileService.aliases(List.of(contract.getEngineerUserId())).get(contract.getEngineerUserId()));
+        List<Long> engineerIds = contractService.engineerUserIds(contract);
+        return new Names(client, engineerIds, profileService.aliases(engineerIds));
     }
 
-    private static MessageView view(Message m, Contract contract, Names names) {
-        UserRole side = m.getSenderUserId().equals(contract.getEngineerUserId()) ? UserRole.ENGINEER : UserRole.CLIENT;
+    private static MessageView view(Message m, Names names) {
+        UserRole side = names.engineerIds().contains(m.getSenderUserId()) ? UserRole.ENGINEER : UserRole.CLIENT;
         return new MessageView(m.getId(), m.getContractId(), m.getSenderUserId(), side,
-                side == UserRole.ENGINEER ? names.engineer() : names.client(), m.getBody(),
+                side == UserRole.ENGINEER ? names.engineers().get(m.getSenderUserId()) : names.client(), m.getBody(),
                 Boolean.TRUE.equals(m.getFlagged()), m.getCreatedAt());
     }
 }
