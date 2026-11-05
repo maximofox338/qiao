@@ -8,12 +8,12 @@ cleanup() {
   # E2E_KEEP=1 deja todo corriendo para depurar.
   [[ "${E2E_KEEP:-0}" == "1" ]] && return 0
   [[ -n "${BACKEND_PID:-}" ]] && kill "$BACKEND_PID" 2>/dev/null || true
-  docker rm -f qiao-e2e-mysql qiao-e2e-nginx >/dev/null 2>&1 || true
+  docker rm -f -v qiao-e2e-mysql qiao-e2e-nginx >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
 echo "== MySQL"
-docker rm -f qiao-e2e-mysql >/dev/null 2>&1 || true
+docker rm -f -v qiao-e2e-mysql >/dev/null 2>&1 || true
 docker run -d --name qiao-e2e-mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=qiao -p 3316:3306 mysql:8.4 \
   --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_ai_ci >/dev/null
 for i in $(seq 1 60); do docker exec qiao-e2e-mysql mysqladmin ping -uroot -proot --silent 2>/dev/null && break; sleep 2; done
@@ -46,7 +46,7 @@ docker run -d --name qiao-e2e-nginx --network host \
   -e BACKEND_UPSTREAM=127.0.0.1:8080 -e NGINX_PORT="$PORT" \
   -v "$ROOT/deploy/nginx/templates:/etc/nginx/templates:ro" \
   -v "$SITE:/usr/share/nginx/html:ro" \
-  nginx:1.27-alpine >/dev/null
+  nginx:1.28-alpine >/dev/null
 for i in $(seq 1 30); do curl -sf "http://127.0.0.1:$PORT/" >/dev/null && break; sleep 1; done
 
 echo "== Playwright"

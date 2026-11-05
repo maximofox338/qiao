@@ -1,46 +1,77 @@
 # Qiao — Nginx: web de clientes y back-office en /, H5 de ingenieros en /m/, API en /api/.
-# BACKEND_UPSTREAM se reemplaza al arrancar (envsubst de la imagen oficial de nginx).
+# ${BACKEND_UPSTREAM} y ${NGINX_PORT} se reemplazan al arrancar (envsubst de la imagen oficial de nginx).
+# Delante va Caddy (HTTPS automático) o un SLB de Alibaba con certificado. Nginx es la ÚNICA fuente de las
+# cabeceras de seguridad: Caddy no agrega ninguna y las que manda el backend se quitan en /api/.
 server_tokens off;
 
 map $http_upgrade $connection_upgrade { default upgrade; '' close; }
+
+# Cache-Control por ruta. Va en un map (y no como add_header dentro de cada location) porque en nginx un
+# add_header dentro de una location anula TODOS los add_header del server: así se perdían la CSP y HSTS
+# en las páginas HTML. Un valor vacío no envía la cabecera (en /api/ decide el backend).
+map $uri $qiao_cache_control {
+    ~^/(m/)?assets/  "public, max-age=31536000, immutable";
+    ~^/api/          "";
+    default          "no-cache";
+}
+
+# Esquema original de la petición: lo envía Caddy o el SLB; si alguien llega directo a nginx, el propio.
+map $http_x_forwarded_proto $qiao_forwarded_proto {
+    default $http_x_forwarded_proto;
+    ''      $scheme;
+}
 
 server {
     listen ${NGINX_PORT} default_server;
     server_name _;
     root /usr/share/nginx/html;
     client_max_body_size 25m;
+    # Redirecciones relativas (/m → /m/): detrás de HTTPS nginx no sabe el esquema ni el puerto públicos.
+    absolute_redirect off;
+
+    # DNS interno de Docker: el nombre del backend se vuelve a resolver cada 10 s, porque su IP cambia cada vez
+    # que el contenedor se recrea (actualización, cambio de .env). Con una IP fija en BACKEND_UPSTREAM no se usa.
+    resolver 127.0.0.11 valid=10s ipv6=off;
+    resolver_timeout 5s;
 
     gzip on;
     gzip_types text/css application/javascript application/json image/svg+xml text/plain;
     gzip_min_length 1024;
 
-    # Cero recursos externos: la política lo hace cumplir también en el navegador.
+    # Cabeceras de seguridad: una sola vez en todas las respuestas (también errores, por "always").
+    # Cero recursos externos: la CSP lo hace cumplir también en el navegador.
     add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://checkout.stripe.com" always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header X-Frame-Options DENY always;
     add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header Cache-Control $qiao_cache_control;
 
     location /api/ {
-        proxy_pass http://${BACKEND_UPSTREAM};
+        set $qiao_backend http://${BACKEND_UPSTREAM};
+        proxy_pass $qiao_backend;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $qiao_forwarded_proto;
         proxy_read_timeout 60s;
+        # Spring Security también envía estas cabeceras; se quitan para que salgan una sola vez (las de arriba).
+        proxy_hide_header Content-Security-Policy;
+        proxy_hide_header Strict-Transport-Security;
+        proxy_hide_header X-Frame-Options;
+        proxy_hide_header X-Content-Type-Options;
+        proxy_hide_header Referrer-Policy;
     }
 
-    location /m/assets/ { expires 1y; add_header Cache-Control "public, immutable"; try_files $uri =404; }
-    location /assets/   { expires 1y; add_header Cache-Control "public, immutable"; try_files $uri =404; }
+    location ^~ /m/assets/ { try_files $uri =404; }
+    location ^~ /assets/   { try_files $uri =404; }
 
     location = /m { return 301 /m/; }
     location /m/ {
-        add_header Cache-Control "no-cache";
         try_files $uri $uri/ /m/index.html;
     }
 
     location / {
-        add_header Cache-Control "no-cache";
         try_files $uri $uri/ /index.html;
     }
 }

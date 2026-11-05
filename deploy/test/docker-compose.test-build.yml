@@ -1,0 +1,11 @@
+# SÓLO PRUEBAS LOCALES (deploy/test/run.sh): construye las imágenes con artefactos ya compilados (jar del backend,
+# dist de web y H5) en lugar de las etapas de Maven/npm, para poder probar sin Internet dentro de los contenedores.
+# Los Dockerfile los genera run.sh a partir de la etapa final de backend/Dockerfile y deploy/nginx/Dockerfile.
+services:
+  backend:
+    build: !override
+      context: ${QIAO_TEST_STAGE:?QIAO_TEST_STAGE requerido}/backend
+
+  nginx:
+    build: !override
+      context: ${QIAO_TEST_STAGE:?QIAO_TEST_STAGE requerido}/nginx

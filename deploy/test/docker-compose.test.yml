@@ -1,0 +1,16 @@
+# SÓLO PRUEBAS LOCALES (deploy/test/run.sh). Nunca usar en el servidor.
+# Proyecto qiao-deploytest en 127.0.0.1:18080/18443 (no choca con scripts/e2e.sh: 3316, 8080, 8088), con un
+# .env propio generado por run.sh (QIAO_TEST_ENV_FILE) y la CA interna de Caddy (CADDY_GLOBAL_EXTRA=local_certs).
+services:
+  backend:
+    env_file: !override
+      - ${QIAO_TEST_ENV_FILE:?QIAO_TEST_ENV_FILE requerido}
+
+  caddy:
+    ports: !override
+      - "127.0.0.1:${HTTP_PORT:?}:80"
+      - "127.0.0.1:${HTTPS_PORT:?}:443"
+
+  uptime-kuma:
+    ports: !override
+      - "127.0.0.1:13001:3001"

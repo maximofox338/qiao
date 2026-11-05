@@ -1,0 +1,16 @@
+# Alternativa a Caddy: el TLS lo termina un balanceador de Alibaba (CLB/ALB) con un certificado del
+# Certificate Management Service, y reenvía HTTP al puerto 80 del ECS. Ver docs/OPERACIONES.md, «Alternativa SLB».
+#
+# Activar en deploy/.env:  COMPOSE_FILE=docker-compose.yml:docker-compose.slb.yml
+# (con imágenes de CI:     COMPOSE_FILE=docker-compose.yml:docker-compose.images.yml:docker-compose.slb.yml)
+# y después:  docker compose rm -sf caddy && docker compose up -d
+#
+# IMPORTANTE: los puertos publicados por Docker no pasan por ufw. En el grupo de seguridad del ECS el puerto 80
+# debe aceptar sólo el tráfico del balanceador (CLB: 100.64.0.0/10), nunca 0.0.0.0/0.
+services:
+  caddy:
+    profiles: [disabled]
+
+  nginx:
+    ports:
+      - "${HTTP_PORT:-80}:80"
