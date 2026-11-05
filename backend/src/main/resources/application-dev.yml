@@ -1,0 +1,23 @@
+# Local development: works out of the box against
+#   docker run -d --name qiao-mysql-dev -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=qiao -p 3306:3306 mysql:8.4
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/qiao?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true&useSSL=false&allowPublicKeyRetrieval=true}
+    username: ${DB_USER:root}
+    password: ${DB_PASSWORD:root}
+
+app:
+  base-url: ${APP_BASE_URL:http://localhost:5173}
+  jwt:
+    secret: ${JWT_SECRET:dev-only-jwt-secret-change-me-0123456789abcdef}
+  storage:
+    local-dir: ${STORAGE_LOCAL_DIR:./data/uploads}
+  partner:
+    api-key: ${PARTNER_API_KEY:dev-partner-key}
+  admin:
+    bootstrap-email: ${ADMIN_BOOTSTRAP_EMAIL:admin@qiao.local}
+    bootstrap-password: ${ADMIN_BOOTSTRAP_PASSWORD:QiaoAdmin-dev-2026}
+  contracts:
+    hk-entity-name: ${APP_CONTRACTS_HK_ENTITY_NAME:Qiao Bridge (HK) Limited [dev]}
+    partner-entity-name: ${APP_CONTRACTS_PARTNER_ENTITY_NAME:Qiao Partner Services Co., Ltd. [dev]}
+  demo-seed: ${APP_DEMO_SEED:false}

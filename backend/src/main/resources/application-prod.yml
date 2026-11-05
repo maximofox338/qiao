@@ -1,0 +1,14 @@
+# Production: every secret must come from the environment; API docs are disabled.
+app:
+  payment:
+    provider: ${PAYMENT_PROVIDER:stripe}
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+logging:
+  level:
+    root: INFO

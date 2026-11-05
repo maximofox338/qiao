@@ -153,6 +153,8 @@ const en: MessageSchema = {
       WITHDRAWN: 'Withdrawn',
     },
     contract: {
+    clientAgreementAccepted: 'The client accepted its services agreement with the Hong Kong company on {date} (that agreement is confidential).',
+    clientAgreementPending: 'The client has not yet accepted its services agreement with the Hong Kong company (that agreement is confidential).',
       PENDING_SIGNATURES: 'Awaiting signatures',
       ACTIVE: 'Active',
       COMPLETED: 'Completed',

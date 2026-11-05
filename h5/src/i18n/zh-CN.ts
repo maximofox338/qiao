@@ -147,6 +147,8 @@ const zhCN = {
       WITHDRAWN: '已撤回',
     },
     contract: {
+    clientAgreementAccepted: '客户已于 {date} 确认其与香港公司的服务合同（该合同内容保密）。',
+    clientAgreementPending: '客户尚未确认其与香港公司的服务合同（该合同内容保密）。',
       PENDING_SIGNATURES: '待签署',
       ACTIVE: '进行中',
       COMPLETED: '已完成',

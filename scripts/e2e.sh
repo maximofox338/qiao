@@ -5,6 +5,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PORT="${E2E_PORT:-8088}"
 cleanup() {
+  # E2E_KEEP=1 deja todo corriendo para depurar.
+  [[ "${E2E_KEEP:-0}" == "1" ]] && return 0
   [[ -n "${BACKEND_PID:-}" ]] && kill "$BACKEND_PID" 2>/dev/null || true
   docker rm -f qiao-e2e-mysql qiao-e2e-nginx >/dev/null 2>&1 || true
 }
@@ -37,11 +39,13 @@ curl -sf http://127.0.0.1:8080/api/health >/dev/null || { echo "backend no arran
 
 echo "== Nginx"
 docker rm -f qiao-e2e-nginx >/dev/null 2>&1 || true
+SITE="$ROOT/e2e/test-results/site"
+rm -rf "$SITE" && mkdir -p "$SITE/m"
+cp -r "$ROOT/web/dist/." "$SITE/" && cp -r "$ROOT/h5/dist/." "$SITE/m/"
 docker run -d --name qiao-e2e-nginx --network host \
   -e BACKEND_UPSTREAM=127.0.0.1:8080 -e NGINX_PORT="$PORT" \
   -v "$ROOT/deploy/nginx/templates:/etc/nginx/templates:ro" \
-  -v "$ROOT/web/dist:/usr/share/nginx/html:ro" \
-  -v "$ROOT/h5/dist:/usr/share/nginx/html/m:ro" \
+  -v "$SITE:/usr/share/nginx/html:ro" \
   nginx:1.27-alpine >/dev/null
 for i in $(seq 1 30); do curl -sf "http://127.0.0.1:$PORT/" >/dev/null && break; sleep 1; done
 

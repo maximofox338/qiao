@@ -261,8 +261,14 @@ test.describe.serial('Qiao MVP — flujo completo', () => {
     contractId = Number(client.url().match(/contracts\/(\d+)/)![1]);
 
     const detail = await api<any>(request, 'GET', `/api/client/contracts/${contractId}`, await token(client, 'qiao.user.token'));
-    const clientDoc = detail.documents.find((d: any) => d.kind === 'CLIENT_SERVICES');
-    const engDoc = detail.documents.find((d: any) => d.kind === 'ENGINEER_DELIVERABLES');
+    const engDetail = await api<any>(request, 'GET', `/api/engineer/contracts/${contractId}`, await token(eng, 'qiao.h5.token'));
+    // Confidencialidad: cada parte recibe sólo su propio documento; el ingeniero nunca ve el precio del cliente.
+    expect(detail.documents.map((d: any) => d.kind)).toEqual(['CLIENT_SERVICES']);
+    expect(engDetail.documents.map((d: any) => d.kind)).toEqual(['ENGINEER_DELIVERABLES']);
+    expect(JSON.stringify(engDetail)).not.toContain(String(detail.clientTotalUsd));
+    expect(JSON.stringify(detail)).not.toContain(`PARTNER-${run}`);
+    const clientDoc = detail.documents[0];
+    const engDoc = engDetail.documents[0];
     milestoneId = detail.milestones.sort((a: any, b: any) => a.seq - b.seq)[0].id;
 
     await client.getByTestId(`contract-doc-accept-${clientDoc.id}`).click();
@@ -312,15 +318,23 @@ test.describe.serial('Qiao MVP — flujo completo', () => {
     await admin.getByTestId('admin-settlement-period').fill(period);
     await admin.getByTestId('admin-settlement-create').click();
     const adminToken = await token(admin, 'qiao.admin.token');
-    const batches = records(await api<any>(request, 'GET', '/api/admin/settlements', adminToken));
-    const batch = batches.find((b: any) => b.period === period && b.status === 'DRAFT') ?? batches[0];
+    let batch: any;
+    await expect.poll(async () => {
+      const batches = records(await api<any>(request, 'GET', '/api/admin/settlements', adminToken));
+      batch = batches.find((b: any) => b.period === period && b.status === 'DRAFT');
+      return Boolean(batch);
+    }).toBe(true);
     await expect(admin.getByTestId(`admin-settlement-row-${batch.id}`)).toBeVisible();
 
     const csv = await request.get(`${API}/api/admin/settlements/${batch.id}/export.csv`, { headers: { Authorization: `Bearer ${adminToken}` } });
     expect(await csv.text()).toContain(`PARTNER-${run}`);
 
-    await admin.getByTestId(`admin-settlement-export-${batch.id}`).click();
+    // Al crear el lote, la UI abre su detalle: se marca como exportado desde ese panel.
+    await expect(admin.getByTestId('admin-settlement-drawer')).toBeVisible();
+    await expect(admin.getByTestId('admin-settlement-lines')).toContainText(`PARTNER-${run}`);
+    await admin.getByTestId('admin-settlement-drawer-export').click();
     await confirmIfAsked(admin);
+    await admin.keyboard.press('Escape');
     await expect(admin.getByTestId(`admin-settlement-status-${batch.id}`)).toHaveAttribute('data-status', 'EXPORTED');
 
     const partner = { 'X-Partner-Key': PARTNER_KEY };

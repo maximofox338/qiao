@@ -1,0 +1,93 @@
+# Base configuration (safe for production). Secrets and endpoints come from environment variables;
+# profile files (dev, test, prod) only add defaults or overrides.
+spring:
+  application:
+    name: qiao
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 20
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jackson:
+    time-zone: UTC
+    serialization:
+      write-dates-as-timestamps: false
+    generator:
+      write-bigdecimal-as-plain: true
+  servlet:
+    multipart:
+      # slightly above the 20 MB attachment limit, which AttachmentService enforces with FILE_TOO_LARGE
+      max-file-size: 21MB
+      max-request-size: 22MB
+  messages:
+    basename: i18n/mail
+    fallback-to-system-locale: false
+  mail:
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:465}
+    username: ${SMTP_USER:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.ssl.enable: true
+      mail.smtp.connectiontimeout: 10000
+      mail.smtp.timeout: 10000
+  mvc:
+    problemdetails:
+      enabled: false
+
+server:
+  port: 8080
+  forward-headers-strategy: native
+  tomcat:
+    # read (and discard) oversized uploads so the client receives the JSON 413 instead of a reset connection
+    max-swallow-size: 30MB
+  error:
+    whitelabel:
+      enabled: false
+
+mybatis-plus:
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto
+      update-strategy: always
+  configuration:
+    map-underscore-to-camel-case: true
+
+springdoc:
+  api-docs:
+    path: /api/openapi
+  swagger-ui:
+    path: /api/docs
+
+app:
+  base-url: ${APP_BASE_URL}
+  fee-pct: ${PLATFORM_FEE_PCT:25}
+  jwt:
+    secret: ${JWT_SECRET}
+  mail:
+    mode: ${MAIL_MODE:log}
+    from: ${SMTP_FROM:no-reply@qiao.local}
+  payment:
+    provider: ${PAYMENT_PROVIDER:fake}
+    stripe-secret-key: ${STRIPE_SECRET_KEY:}
+    stripe-webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+  storage:
+    type: ${STORAGE:local}
+    local-dir: ${STORAGE_LOCAL_DIR:/data/uploads}
+    oss:
+      endpoint: ${OSS_ENDPOINT:}
+      bucket: ${OSS_BUCKET:}
+      access-key-id: ${OSS_ACCESS_KEY_ID:}
+      access-key-secret: ${OSS_ACCESS_KEY_SECRET:}
+  partner:
+    api-key: ${PARTNER_API_KEY:}
+  admin:
+    bootstrap-email: ${ADMIN_BOOTSTRAP_EMAIL:}
+    bootstrap-password: ${ADMIN_BOOTSTRAP_PASSWORD:}
+  demo-seed: false

@@ -182,6 +182,9 @@ export interface ContractSummary {
 }
 
 export interface ContractDetail extends ContractSummary {
+  /** Each party only receives its own document; the other party's acceptance comes as a timestamp. */
+  clientAcceptedAt?: string | null
+  engineerAcceptedAt?: string | null
   documents: ContractDocument[]
   milestones: ContractMilestone[]
 }

@@ -455,6 +455,8 @@ const es: Messages = {
     acceptedOn: 'Aceptado el {date}',
     accept: 'Aceptar',
     awaitingEngineer: 'Pendiente de aceptación por el ingeniero',
+    engineerAgreementAccepted: 'El ingeniero aceptó su acuerdo de entregables con nuestra empresa socia el {date}. Ese acuerdo es confidencial.',
+    engineerAgreementPending: 'El ingeniero todavía no aceptó su acuerdo de entregables con nuestra empresa socia. Ese acuerdo es confidencial.',
     hash: 'SHA-256 {hash}',
     docAccepted: 'Documento aceptado.',
     milestones: 'Hitos',

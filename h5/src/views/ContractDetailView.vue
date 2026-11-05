@@ -273,6 +273,17 @@ async function send() {
               {{ t('contract.accept') }}
             </van-button>
           </article>
+          <p
+            class="q-muted client-agreement"
+            data-testid="contract-client-agreement"
+            :data-status="contract.clientAcceptedAt ? 'ACCEPTED' : 'PENDING'"
+          >
+            {{
+              contract.clientAcceptedAt
+                ? t('contract.clientAgreementAccepted', { date: formatDate(contract.clientAcceptedAt) })
+                : t('contract.clientAgreementPending')
+            }}
+          </p>
         </section>
 
         <!-- Milestones -->
@@ -743,5 +754,10 @@ async function send() {
 }
 .submit-sheet__uploader {
   margin-top: 8px;
+}
+.client-agreement {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
 }
 </style>

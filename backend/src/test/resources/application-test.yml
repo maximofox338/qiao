@@ -1,0 +1,16 @@
+# Integration tests: the datasource comes from Testcontainers (@ServiceConnection).
+app:
+  base-url: http://localhost:5173
+  jwt:
+    secret: test-only-jwt-secret-0123456789abcdef0123456789
+  storage:
+    local-dir: target/test-uploads
+  partner:
+    api-key: test-partner-key
+  admin:
+    bootstrap-email: admin@test.qiao
+    bootstrap-password: TestAdmin-password-1
+    login-attempts-per-ip-per-minute: 1000
+  otp:
+    requests-per-email-per-minute: 100
+    requests-per-ip-per-hour: 10000

@@ -244,6 +244,9 @@ export interface Contract {
   feePct?: number
   talentTotalUsd?: number
   clientTotalUsd: number
+  /** Acceptance timestamps of each party's document (each party only receives its own document's text). */
+  clientAcceptedAt?: string | null
+  engineerAcceptedAt?: string | null
   activatedAt?: string | null
   completedAt?: string | null
   documents?: ContractDocument[]

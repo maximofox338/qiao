@@ -284,6 +284,17 @@ const mine = (m: Message) => !!user.me && m.senderUserId === user.me.id
             </div>
           </article>
         </div>
+        <p
+          class="q-muted q-small engineer-agreement"
+          :data-testid="'contract-engineer-agreement'"
+          :data-status="contract.engineerAcceptedAt ? 'ACCEPTED' : 'PENDING'"
+        >
+          {{
+            contract.engineerAcceptedAt
+              ? t('contract.engineerAgreementAccepted', { date: dateTime(contract.engineerAcceptedAt) })
+              : t('contract.engineerAgreementPending')
+          }}
+        </p>
       </section>
 
       <section class="q-card">

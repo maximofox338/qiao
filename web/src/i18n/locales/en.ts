@@ -454,6 +454,8 @@ const en = {
     acceptedOn: 'Accepted {date}',
     accept: 'Accept',
     awaitingEngineer: 'Awaiting the engineer’s acceptance',
+    engineerAgreementAccepted: 'The engineer accepted their deliverables agreement with our partner company on {date}. That agreement is confidential.',
+    engineerAgreementPending: 'The engineer has not yet accepted their deliverables agreement with our partner company. That agreement is confidential.',
     hash: 'SHA-256 {hash}',
     docAccepted: 'Document accepted.',
     milestones: 'Milestones',
