@@ -1,0 +1,381 @@
+/* Qiao H5 — global theme. System fonts only (no web fonts: they would be an external request). */
+:root {
+  --q-primary: #2753d6;
+  --q-primary-dark: #1b3fa8;
+  --q-primary-soft: #edf2ff;
+  --q-accent: #f2994a;
+  --q-bg: #f4f5f7;
+  --q-card: #ffffff;
+  --q-text: #1d2129;
+  --q-text-2: #4e5969;
+  --q-text-3: #86909c;
+  --q-border: #ebedf0;
+  --q-success: #00a870;
+  --q-success-soft: #e8f8f2;
+  --q-warning: #e37318;
+  --q-warning-soft: #fff4e8;
+  --q-danger: #d54941;
+  --q-danger-soft: #fdecee;
+  --q-radius: 12px;
+  --q-shell: 480px;
+  --q-font: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Segoe UI', Roboto,
+    sans-serif;
+}
+
+/* Vant theme. Doubled :root selector so it wins over Vant's own :root defaults regardless of CSS order
+   (derived Vant variables such as --van-button-primary-background are resolved on :root too). */
+:root:root {
+  --van-primary-color: var(--q-primary);
+  --van-success-color: var(--q-success);
+  --van-danger-color: var(--q-danger);
+  --van-warning-color: var(--q-warning);
+  --van-text-color: var(--q-text);
+  --van-text-color-2: var(--q-text-3);
+  --van-base-font: var(--q-font);
+  --van-background: var(--q-bg);
+  --van-nav-bar-title-font-size: 17px;
+  --van-nav-bar-icon-color: var(--q-text);
+  --van-nav-bar-text-color: var(--q-text);
+  --van-tabbar-item-active-color: var(--q-primary);
+  --van-button-radius: 8px;
+  --van-button-large-height: 48px;
+  --van-cell-group-inset-radius: var(--q-radius);
+  --van-cell-group-inset-padding: 0 12px;
+  --van-tag-padding: 0 6px;
+  --van-tag-radius: 4px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--q-font);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--q-text);
+  background: #e6e9ef;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+a {
+  color: var(--q-primary);
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+}
+
+#app {
+  max-width: var(--q-shell);
+  min-height: 100vh;
+  margin: 0 auto;
+  background: var(--q-bg);
+  position: relative;
+}
+
+@media (min-width: 481px) {
+  #app {
+    box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.04), 0 8px 40px rgba(15, 23, 42, 0.08);
+  }
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+/* Keep fixed bars and bottom sheets inside the centered column on desktop. */
+.van-tabbar--fixed,
+.van-nav-bar--fixed,
+.van-popup--bottom,
+.van-submit-bar,
+.q-fixed-bottom {
+  left: 0;
+  right: 0;
+  margin-left: auto;
+  margin-right: auto;
+  max-width: var(--q-shell);
+}
+
+.app-tabbar {
+  box-shadow: 0 -1px 0 var(--q-border);
+}
+.app-tabbar.van-hairline--top-bottom::after {
+  border: 0;
+}
+
+/* ---------- building blocks ---------- */
+.q-page {
+  padding: 12px 12px 24px;
+}
+
+.q-card {
+  background: var(--q-card);
+  border-radius: var(--q-radius);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.q-card--flush {
+  padding: 0;
+  overflow: hidden;
+}
+
+.q-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--q-text);
+}
+
+.q-section-title small {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--q-text-3);
+}
+
+.q-group-title {
+  margin: 20px 4px 8px;
+  font-size: 13px;
+  color: var(--q-text-3);
+}
+
+.q-muted {
+  color: var(--q-text-3);
+  font-size: 13px;
+}
+
+.q-text-2 {
+  color: var(--q-text-2);
+}
+
+.q-pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.q-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.q-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.q-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.q-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: #f2f3f5;
+  color: var(--q-text-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.q-amount {
+  font-weight: 700;
+  color: var(--q-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.q-amount--accent {
+  color: var(--q-accent);
+}
+
+.q-notice {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.55;
+  background: var(--q-primary-soft);
+  color: var(--q-primary-dark);
+}
+
+.q-notice--warning {
+  background: var(--q-warning-soft);
+  color: #a24d07;
+}
+
+.q-notice--danger {
+  background: var(--q-danger-soft);
+  color: #a3312a;
+}
+
+.q-notice--success {
+  background: var(--q-success-soft);
+  color: #00704a;
+}
+
+.q-notice .van-icon {
+  flex: none;
+  margin-top: 2px;
+  font-size: 15px;
+}
+
+.q-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.q-actions > * {
+  flex: 1;
+}
+
+.q-fixed-bottom {
+  position: fixed;
+  bottom: 0;
+  z-index: 10;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 -1px 0 var(--q-border);
+}
+
+.q-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.q-badge--pseudo {
+  background: var(--q-primary-soft);
+  color: var(--q-primary);
+}
+
+.q-badge--private {
+  background: #f2f3f5;
+  color: var(--q-text-3);
+}
+
+/* Vant fields inside our cards: keep inner padding consistent */
+.q-card .van-cell-group--inset {
+  margin: 0;
+}
+
+.van-field__label {
+  color: var(--q-text-2);
+}
+
+/* Markdown content (legal texts, contract documents) */
+.q-markdown {
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--q-text-2);
+  word-break: break-word;
+}
+.q-markdown h1,
+.q-markdown h2,
+.q-markdown h3,
+.q-markdown h4 {
+  color: var(--q-text);
+  line-height: 1.4;
+  margin: 1.2em 0 0.5em;
+}
+.q-markdown h1 {
+  font-size: 20px;
+}
+.q-markdown h2 {
+  font-size: 17px;
+}
+.q-markdown h3,
+.q-markdown h4 {
+  font-size: 15px;
+}
+.q-markdown > :first-child {
+  margin-top: 0;
+}
+.q-markdown p,
+.q-markdown ul,
+.q-markdown ol {
+  margin: 0 0 0.8em;
+}
+.q-markdown ul,
+.q-markdown ol {
+  padding-left: 1.4em;
+}
+.q-markdown ul {
+  list-style: disc;
+}
+.q-markdown ol {
+  list-style: decimal;
+}
+.q-markdown li + li {
+  margin-top: 0.25em;
+}
+.q-markdown li > ul,
+.q-markdown li > ol {
+  margin: 0.25em 0 0;
+}
+.q-markdown code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: #f2f3f5;
+  font-size: 13px;
+}
+.q-markdown pre {
+  overflow-x: auto;
+  padding: 10px;
+  border-radius: 8px;
+  background: #f7f8fa;
+}
+.q-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+}
+.q-markdown th,
+.q-markdown td {
+  border: 1px solid var(--q-border);
+  padding: 6px 8px;
+}
+.q-markdown blockquote {
+  margin: 0 0 0.8em;
+  padding: 4px 12px;
+  border-left: 3px solid var(--q-border);
+  color: var(--q-text-3);
+}
+.q-markdown hr {
+  border: 0;
+  border-top: 1px solid var(--q-border);
+  margin: 1.2em 0;
+}

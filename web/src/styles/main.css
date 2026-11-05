@@ -1,0 +1,362 @@
+/* Qiao web — neutral palette, one accent (#1f5f8b). System fonts only, no external assets. */
+
+:root {
+  --q-font: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Segoe UI', Roboto,
+    sans-serif;
+  --q-accent: #1f5f8b;
+  --q-accent-soft: #e9eff3;
+  --q-text: #1f2328;
+  --q-text-2: #4b5563;
+  --q-text-3: #6b7280;
+  --q-border: #e5e7eb;
+  --q-bg: #f7f8fa;
+  --q-surface: #ffffff;
+  --q-radius: 10px;
+  --q-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
+  --q-max: 1120px;
+
+  --el-font-family: var(--q-font);
+  --el-color-primary: #1f5f8b;
+  --el-color-primary-light-3: #628fae;
+  --el-color-primary-light-5: #8fafc5;
+  --el-color-primary-light-7: #bccfdc;
+  --el-color-primary-light-8: #d2dfe8;
+  --el-color-primary-light-9: #e9eff3;
+  --el-color-primary-dark-2: #194c6f;
+  --el-border-radius-base: 6px;
+  --el-text-color-primary: var(--q-text);
+  --el-text-color-regular: var(--q-text-2);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--q-font);
+  color: var(--q-text);
+  background: var(--q-bg);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+a {
+  color: var(--q-accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  color: var(--q-text);
+  line-height: 1.25;
+  margin: 0 0 0.5em;
+  font-weight: 650;
+}
+
+h1 {
+  font-size: 1.75rem;
+}
+h2 {
+  font-size: 1.3rem;
+}
+h3 {
+  font-size: 1.08rem;
+}
+
+p {
+  margin: 0 0 0.75em;
+}
+
+mark {
+  background: #fff1c2;
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+
+/* ---------- Layout helpers ---------- */
+
+.q-container {
+  width: 100%;
+  max-width: var(--q-max);
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+.q-page {
+  padding-top: 28px;
+  padding-bottom: 56px;
+}
+
+.q-page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.q-page-head h1 {
+  margin: 0;
+}
+
+.q-page-head .q-sub {
+  margin: 4px 0 0;
+  color: var(--q-text-3);
+}
+
+.q-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.q-actions .el-button + .el-button {
+  margin-left: 0;
+}
+
+.q-card {
+  background: var(--q-surface);
+  border: 1px solid var(--q-border);
+  border-radius: var(--q-radius);
+  box-shadow: var(--q-shadow);
+  padding: 20px;
+  margin-bottom: 16px;
+  min-width: 0;
+}
+
+.q-card > h2:first-child,
+.q-card > h3:first-child,
+.q-card-head h2,
+.q-card-head h3 {
+  margin-top: 0;
+}
+
+.q-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.q-card-head h2,
+.q-card-head h3 {
+  margin-bottom: 0;
+}
+
+.q-muted {
+  color: var(--q-text-3);
+}
+
+.q-small {
+  font-size: 0.86rem;
+}
+
+.q-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.q-grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.q-grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.q-grid-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.q-kv {
+  display: grid;
+  grid-template-columns: minmax(120px, max-content) 1fr;
+  gap: 6px 16px;
+  margin: 0;
+}
+
+.q-kv dt {
+  color: var(--q-text-3);
+}
+
+.q-kv dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.q-pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.q-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.q-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.q-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.q-stack > * + * {
+  margin-top: 12px;
+}
+
+.field-error {
+  color: var(--el-color-danger);
+  font-size: 12px;
+  line-height: 1.4;
+  padding-top: 4px;
+}
+
+/* ---------- Markdown ---------- */
+
+.q-markdown {
+  color: var(--q-text);
+  overflow-wrap: anywhere;
+}
+.q-markdown h1 {
+  font-size: 1.4rem;
+}
+.q-markdown h2 {
+  font-size: 1.15rem;
+  margin-top: 1.2em;
+}
+.q-markdown h3 {
+  font-size: 1rem;
+  margin-top: 1em;
+}
+.q-markdown ul,
+.q-markdown ol {
+  padding-left: 1.4em;
+}
+.q-markdown code {
+  background: #f1f3f5;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+.q-markdown pre {
+  background: #f1f3f5;
+  padding: 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.q-markdown blockquote {
+  margin: 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--q-border);
+  color: var(--q-text-2);
+}
+.q-markdown table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+}
+.q-markdown th,
+.q-markdown td {
+  border: 1px solid var(--q-border);
+  padding: 4px 8px;
+}
+
+.q-doc-scroll {
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid var(--q-border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  background: #fcfcfd;
+}
+
+/* ---------- Element Plus tweaks ---------- */
+
+/* Long checkbox labels (declarations) keep the text colour when checked. */
+.el-checkbox__input.is-checked + .el-checkbox__label {
+  color: var(--q-text);
+}
+
+.el-button {
+  font-weight: 550;
+}
+
+.el-alert {
+  margin-bottom: 12px;
+}
+
+.el-drawer__body {
+  padding-top: 0;
+}
+
+.el-form-item__label {
+  font-weight: 550;
+}
+
+.el-dialog {
+  max-width: calc(100vw - 24px);
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 900px) {
+  .q-grid-3,
+  .q-grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  h1 {
+    font-size: 1.45rem;
+  }
+  .q-page {
+    padding-top: 20px;
+    padding-bottom: 40px;
+  }
+  .q-grid-2,
+  .q-grid-3,
+  .q-grid-4 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .q-card {
+    padding: 16px;
+  }
+  .q-kv {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+  .q-kv dd {
+    margin-bottom: 8px;
+  }
+}

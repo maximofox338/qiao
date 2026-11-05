@@ -1,0 +1,46 @@
+# Qiao — Nginx: web de clientes y back-office en /, H5 de ingenieros en /m/, API en /api/.
+# BACKEND_UPSTREAM se reemplaza al arrancar (envsubst de la imagen oficial de nginx).
+server_tokens off;
+
+map $http_upgrade $connection_upgrade { default upgrade; '' close; }
+
+server {
+    listen ${NGINX_PORT} default_server;
+    server_name _;
+    root /usr/share/nginx/html;
+    client_max_body_size 25m;
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml text/plain;
+    gzip_min_length 1024;
+
+    # Cero recursos externos: la política lo hace cumplir también en el navegador.
+    add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://checkout.stripe.com" always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+    add_header X-Frame-Options DENY always;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    location /api/ {
+        proxy_pass http://${BACKEND_UPSTREAM};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+
+    location /m/assets/ { expires 1y; add_header Cache-Control "public, immutable"; try_files $uri =404; }
+    location /assets/   { expires 1y; add_header Cache-Control "public, immutable"; try_files $uri =404; }
+
+    location = /m { return 301 /m/; }
+    location /m/ {
+        add_header Cache-Control "no-cache";
+        try_files $uri $uri/ /m/index.html;
+    }
+
+    location / {
+        add_header Cache-Control "no-cache";
+        try_files $uri $uri/ /index.html;
+    }
+}

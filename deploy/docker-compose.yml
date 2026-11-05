@@ -1,0 +1,47 @@
+# Qiao fase 1 — un solo servidor en Alibaba Cloud Hong Kong (ECS).
+# Uso: cp .env.example .env && editar && docker compose up -d --build
+name: qiao
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: qiao
+      MYSQL_USER: ${DB_USER:-qiao}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD requerido}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD requerido}
+      TZ: UTC
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci"]
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build: { context: ../backend }
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:mysql://mysql:3306/qiao?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+      STORAGE_LOCAL_DIR: /data/files
+    volumes:
+      - files:/data/files
+    depends_on:
+      mysql: { condition: service_healthy }
+
+  nginx:
+    build: { context: .., dockerfile: deploy/nginx/Dockerfile }
+    restart: unless-stopped
+    environment:
+      BACKEND_UPSTREAM: backend:8080
+    ports:
+      - "80:80"
+    depends_on: [backend]
+
+volumes:
+  mysql-data:
+  files:

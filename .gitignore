@@ -1,0 +1,19 @@
+# Java
+backend/target/
+*.class
+# Node
+node_modules/
+web/dist/
+h5/dist/
+e2e/test-results/
+e2e/playwright-report/
+# Entorno y datos
+.env
+deploy/.env
+*.log
+.data/
+# IDE
+.idea/
+.vscode/
+*.iml
+.DS_Store
