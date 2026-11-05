@@ -1,0 +1,26 @@
+# Qiao — Caddy delante de nginx: HTTPS automático con Let's Encrypt para {$DOMAIN} y redirección
+# HTTP → HTTPS (puerto 80 → 443). Los certificados se guardan en el volumen caddy-data y se renuevan solos
+# unos 30 días antes de vencer.
+# Las cabeceras de seguridad (CSP, HSTS, X-Frame-Options...) las pone nginx UNA sola vez: aquí no se agrega
+# ninguna, para que no salgan duplicadas.
+{
+	email {$ACME_EMAIL}
+	# Sin HTTP/3 (QUIC por UDP): en China continental se degrada con frecuencia y obligaría a abrir 443/udp.
+	servers {
+		protocols h1 h2
+	}
+	# Sólo para pruebas locales (deploy/test): "local_certs" usa la CA interna de Caddy en lugar de Let's Encrypt.
+	{$CADDY_GLOBAL_EXTRA}
+}
+
+{$DOMAIN} {
+	reverse_proxy nginx:80 {
+		# Caddy reemplaza la X-Forwarded-For que mande el cliente por su IP real (no confía en nadie delante).
+		# Sin cabeceras que revelen el software (Server de nginx, Via de Caddy).
+		header_down -Server
+	}
+	header {
+		-Server
+		-Via
+	}
+}

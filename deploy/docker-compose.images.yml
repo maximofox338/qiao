@@ -1,0 +1,19 @@
+# Imágenes construidas en CI (GitHub Actions) y publicadas en Alibaba Container Registry (Hong Kong):
+# el servidor sólo descarga, no compila (más rápido y sin cargar los 4 GB del ECS).
+#
+# Activar en deploy/.env:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.images.yml
+#   QIAO_REGISTRY=registry-vpc.cn-hongkong.aliyuncs.com   (dirección VPC: tráfico gratis desde el ECS de HK)
+#   QIAO_NAMESPACE=<espacio de nombres de ACR>
+#   QIAO_IMAGE_TAG=<sha del commit>   (lo escribe deploy/update.sh; no editar a mano)
+# y una vez:  docker login --username=<usuario ACR> registry-vpc.cn-hongkong.aliyuncs.com
+services:
+  backend:
+    image: ${QIAO_REGISTRY:?QIAO_REGISTRY requerido}/${QIAO_NAMESPACE:?QIAO_NAMESPACE requerido}/qiao-backend:${QIAO_IMAGE_TAG:?QIAO_IMAGE_TAG requerido}
+    build: !reset null
+    pull_policy: missing
+
+  nginx:
+    image: ${QIAO_REGISTRY:?QIAO_REGISTRY requerido}/${QIAO_NAMESPACE:?QIAO_NAMESPACE requerido}/qiao-nginx:${QIAO_IMAGE_TAG:?QIAO_IMAGE_TAG requerido}
+    build: !reset null
+    pull_policy: missing

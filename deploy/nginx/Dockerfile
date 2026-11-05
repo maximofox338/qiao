@@ -15,7 +15,8 @@ RUN npm ci
 COPY h5/ ./
 RUN npm run build && npm run check:external
 
-FROM nginx:1.27-alpine
+# 1.28 = rama estable de nginx (1.27 ya no recibe parches).
+FROM nginx:1.28-alpine
 ENV BACKEND_UPSTREAM=backend:8080 NGINX_PORT=80
 COPY deploy/nginx/templates/ /etc/nginx/templates/
 COPY --from=web /src/web/dist/ /usr/share/nginx/html/

@@ -1,41 +1,49 @@
 # Despliegue en Alibaba Cloud Hong Kong (fase 1)
 
-Un solo servidor (ECS) en la región **cn-hongkong** corre todo con Docker Compose: MySQL, backend y Nginx (web de clientes y back-office en `/`, H5 de ingenieros en `/m/`, API en `/api/`). No hace falta ICP porque el servidor no está en China continental.
+Un solo servidor (ECS, Ubuntu 24.04, 2 vCPU / 4 GB) en la región **cn-hongkong** corre todo con Docker Compose:
+Caddy (HTTPS automático), Nginx (web de clientes y back-office en `/`, H5 de ingenieros en `/m/`, API en `/api/`),
+backend y MySQL. No hace falta ICP porque el servidor no está en China continental.
 
-## 1. Recursos
-| Recurso | Configuración inicial |
-| --- | --- |
-| ECS | 2 vCPU, 4 GB, Ubuntu 24.04, región cn-hongkong, 40 GB de disco |
-| IP pública | Ancho de banda por tráfico; abrir sólo los puertos 80 y 443 (SSH sólo desde tu IP) |
-| Dominio | Uno que no sea .cn (un .cn exige registro en China) |
-| Certificado | Servicio de certificados de Alibaba o Let's Encrypt |
-| DirectMail | Región Singapur o Hong Kong; dominio verificado con SPF, DKIM y DMARC |
-| Backups | Snapshot automático diario del disco; más adelante, pasar MySQL a RDS |
+**Guía de operación completa (primer despliegue, rutinas, actualizar, volver atrás, backups, secretos,
+incidentes, 拨测, costos): [`docs/OPERACIONES.md`](../docs/OPERACIONES.md).**
 
-## 2. Instalación
+## Instalación (resumen)
+En un ECS nuevo, como root, con el registro A del dominio ya apuntando a su IP:
 ```bash
-curl -fsSL https://get.docker.com | sh
-git clone <repo> qiao && cd qiao/deploy
-cp .env.example .env   # completar todos los valores
-docker compose up -d --build
-docker compose logs -f backend
+bash install.sh git@github.com:<org>/qiao.git main
 ```
-El backend aplica las migraciones de base de datos al arrancar y crea el primer administrador con `ADMIN_BOOTSTRAP_EMAIL` y `ADMIN_BOOTSTRAP_PASSWORD`.
+Instala Docker (repositorio oficial), crea el usuario `qiao`, clona el repo en `/opt/qiao`, genera `deploy/.env`
+con secretos aleatorios (pregunta sólo dominio, email del admin, SMTP y Stripe), configura ufw (SSH, 80, 443),
+actualizaciones automáticas de seguridad, swap y backups diarios, arranca todo y muestra la URL del admin.
 
-Si las imágenes se construyen en CI (recomendado), reemplazar `build:` por `image: registry.cn-hongkong.aliyuncs.com/<namespace>/qiao-backend:<tag>` y lo mismo para `qiao-nginx`.
+## Archivos
+| Archivo | Qué es |
+| --- | --- |
+| `docker-compose.yml` | stack base: mysql, backend, nginx, caddy; perfil opcional `monitoring` (Uptime Kuma en 127.0.0.1:3001) |
+| `docker-compose.images.yml` | usa imágenes de CI desde Alibaba ACR (`QIAO_REGISTRY/QIAO_NAMESPACE/qiao-*:QIAO_IMAGE_TAG`) en lugar de compilar |
+| `docker-compose.slb.yml` | alternativa con TLS en un SLB de Alibaba: sin Caddy, nginx publica el puerto 80 |
+| `.env.example` | todas las variables (la variante se elige con `COMPOSE_FILE` en `.env`) |
+| `caddy/Caddyfile` | HTTPS con Let's Encrypt para `DOMAIN`, HTTP → HTTPS, sin HTTP/3, sin cabeceras propias |
+| `nginx/` | imagen con web y H5; **única** fuente de las cabeceras de seguridad (CSP, HSTS, X-Frame-Options…) |
+| `install.sh` | instalación idempotente en un ECS nuevo |
+| `update.sh` | actualizar a un tag (o compilar), esperar salud y volver atrás solo si falla; `--rollback`, `--history` |
+| `backup.sh` / `restore.sh` | backup diario (mysqldump consistente + volumen de archivos, copia en OSS) y restauración con `--dry-run` |
+| `status.sh` | estado: contenedores, salud de punta a punta, cabeceras, certificado, disco, memoria, backups |
+| `rotate-secret.sh` | rotar `JWT_SECRET`, `PARTNER_API_KEY`, `DB_PASSWORD`, `MYSQL_ROOT_PASSWORD` |
+| `lib.sh` | funciones comunes de los scripts |
+| `test/` | **sólo pruebas locales**: overrides y `run.sh` (ver abajo) |
 
-## 3. HTTPS
-Poner el certificado delante del puerto 80: un balanceador SLB de Alibaba con el certificado, o un Nginx/Caddy adicional en el host. El Nginx del proyecto ya envía HSTS y una política de seguridad (CSP) que bloquea cualquier recurso externo.
-
-## 4. Stripe
-1. Cuenta de Stripe a nombre de la Ltd de Hong Kong.
-2. Webhook a `https://tu-dominio.com/api/payments/stripe/webhook` con el evento `checkout.session.completed`.
-3. Cargar `STRIPE_SECRET_KEY` y `STRIPE_WEBHOOK_SECRET` en `.env` y poner `PAYMENT_PROVIDER=stripe`.
-
-## 5. Pruebas desde China (拨测)
-Configurar sondas de Alibaba Cloud 云拨测 (o 17CE) cada 5 minutos contra `https://tu-dominio.com/m/` desde China Telecom, China Unicom y China Mobile, con alerta tras dos fallas seguidas. Antes de cada lanzamiento, revisar que la página cargue en menos de 2 segundos.
-
-## 6. Operación
-- Logs: `docker compose logs`; en producción, enviar a Log Service (SLS) con retención de 180 días.
-- Backups: snapshot diario y una restauración de prueba por mes.
-- Actualizar: `git pull && docker compose up -d --build` (o cambiar el tag de imagen).
+## Prueba local del despliegue
+Sin dominio público ni Internet dentro de los contenedores, con artefactos ya compilados:
+```bash
+(cd backend && mvn -q -DskipTests package) && (cd web && npm ci && npm run build) && (cd h5 && npm ci && npm run build)
+sudo apt-get install -y rclone      # cliente S3 que usa backup.sh
+deploy/test/run.sh                  # KEEP=1 para dejarlo levantado; deploy/test/run.sh --down para borrarlo
+```
+Levanta el proyecto `qiao-deploytest` en `127.0.0.1:18080/18443` (no choca con `scripts/e2e.sh`: 3316, 8080, 8088)
+usando `test/docker-compose.test.yml` (`.env` propio, puertos, CA interna de Caddy con `local_certs`) y
+`test/docker-compose.test-build.yml` (imágenes desde la etapa final de los Dockerfile reales, copiando el jar y los
+`dist/`). Comprueba HTTPS y redirección, cabeceras de seguridad una sola vez, healthchecks, rotación de logs,
+permisos del volumen, backup → S3 local → restore (dry-run, fetch y real), `status.sh`, `update.sh` con rollback
+automático contra un registro local, `rotate-secret.sh`, la variante SLB y Uptime Kuma. Al terminar borra
+contenedores, volúmenes e imágenes de prueba.
