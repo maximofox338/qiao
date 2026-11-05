@@ -25,6 +25,9 @@
         <stripe-java.version>34.1.0</stripe-java.version>
         <aliyun-oss.version>3.18.5</aliyun-oss.version>
         <springdoc.version>2.8.17</springdoc.version>
+        <!-- Spring Boot 3.5 manages Flyway 11.7.x, which warns "MySQL 8.4 is newer than this version of Flyway and
+             support has not been tested" (it knows MySQL up to 8.1). 11.20.x (same major) supports MySQL 8.4. -->
+        <flyway.version>11.20.3</flyway.version>
     </properties>
 
     <dependencies>
@@ -129,6 +132,14 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <executions>
+                    <!-- META-INF/build-info.properties: the project version shown by GET /api/health -->
+                    <execution>
+                        <goals>
+                            <goal>build-info</goal>
+                        </goals>
+                    </execution>
+                </executions>
                 <configuration>
                     <excludes>
                         <exclude>

@@ -9,10 +9,11 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Authenticated caller. Users carry one {@code role} (CLIENT/ENGINEER); admins carry {@code adminRoles}.
+ * Authenticated caller. Users carry one {@code role} (CLIENT/ENGINEER); admins carry {@code adminRoles} and the
+ * {@code tokenVersion} their token was issued with (claim {@code tv}, 0 when absent; see {@code AdminStatusPolicy}).
  */
 public record AuthPrincipal(long id, Kind kind, String role, Set<String> adminRoles, String tokenId,
-                            Instant tokenExpiresAt) {
+                            Instant tokenExpiresAt, int tokenVersion) {
 
     public enum Kind { USER, ADMIN, PARTNER }
 
@@ -20,7 +21,7 @@ public record AuthPrincipal(long id, Kind kind, String role, Set<String> adminRo
     public static final String ROLE_PARTNER = "PARTNER";
 
     public static AuthPrincipal partner() {
-        return new AuthPrincipal(0L, Kind.PARTNER, ROLE_PARTNER, Set.of(), null, null);
+        return new AuthPrincipal(0L, Kind.PARTNER, ROLE_PARTNER, Set.of(), null, null, 0);
     }
 
     public boolean isUser() {

@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # Build:  docker build -t qiao-backend .
 #         (optional) --build-arg MAVEN_MIRROR=https://maven.aliyun.com/repository/public
+#         (optional) --build-arg APP_COMMIT=$(git rev-parse HEAD)   shown as "commit" by GET /api/health
 
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /build
@@ -26,6 +27,10 @@ ENV SPRING_PROFILES_ACTIVE=prod \
     JAVA_OPTS="-XX:MaxRAMPercentage=75 -Duser.timezone=UTC"
 VOLUME /data/uploads
 EXPOSE 8080
+# Git commit of this build (CI and deploy/update.sh pass it); declared last so it does not invalidate earlier layers.
+ARG APP_COMMIT=unknown
+ENV APP_COMMIT=${APP_COMMIT}
+LABEL org.opencontainers.image.revision=${APP_COMMIT}
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
     CMD curl -fsS http://localhost:8080/api/health || exit 1
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]

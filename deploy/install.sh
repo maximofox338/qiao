@@ -7,13 +7,14 @@
 #        p. ej.  bash install.sh git@github.com:mi-org/qiao.git main
 #
 # Pasos: 1 paquetes base · 2 Docker (repositorio oficial) · 3 swap · 4 usuario qiao · 5 repo en /opt/qiao
-#        6 deploy/.env (secretos aleatorios; pregunta dominio, email del admin, SMTP y Stripe)
-#        7 firewall ufw (SSH, 80, 443) · 8 actualizaciones automáticas de seguridad · 9 backups diarios
-#        10 arranque con HTTPS y resumen.
+#        6 deploy/.env (secretos aleatorios; pregunta dominio, email del admin, SMTP, Stripe y las razones
+#          sociales de los contratos) · 7 firewall ufw (SSH, 80, 443) · 8 actualizaciones automáticas de seguridad
+#        9 backups diarios · 10 arranque con HTTPS y resumen.
 #
 # Instalación desatendida (sin preguntas): definir QIAO_DOMAIN, QIAO_ADMIN_EMAIL, QIAO_MAIL_MODE (smtp|log),
 # QIAO_SMTP_HOST, QIAO_SMTP_PORT, QIAO_SMTP_USER, QIAO_SMTP_PASSWORD, QIAO_SMTP_FROM,
-# QIAO_PAYMENT_PROVIDER (stripe|fake), QIAO_STRIPE_SECRET_KEY, QIAO_STRIPE_WEBHOOK_SECRET.
+# QIAO_PAYMENT_PROVIDER (stripe|fake), QIAO_STRIPE_SECRET_KEY, QIAO_STRIPE_WEBHOOK_SECRET,
+# QIAO_HK_ENTITY_NAME y QIAO_PARTNER_ENTITY_NAME (razones sociales; con fake pueden definirse vacías).
 # Recuperación en un servidor nuevo con el .env guardado: QIAO_ENV_SOURCE=/root/qiao.env bash install.sh <url> [rama]
 set -euo pipefail
 
@@ -82,6 +83,42 @@ ask_secret() {
     echo "  (obligatorio)"
   done
   printf -v "$var" '%s' "$answer"
+}
+
+# ask_optional VARIABLE "pregunta": como ask, pero Enter deja la respuesta vacía. QIAO_<VARIABLE> definida (aunque
+# esté vacía) se usa sin preguntar; sin terminal (instalación desatendida) queda vacía.
+ask_optional() {
+  local var="$1" prompt="$2" preset="QIAO_$1" answer=""
+  if [[ -n "${!preset+x}" ]]; then
+    printf -v "$var" '%s' "${!preset}"
+    return 0
+  fi
+  if ! have_tty; then
+    warn "Sin terminal: $var queda vacía (definir $preset para completarla)"
+    printf -v "$var" '%s' ""
+    return 0
+  fi
+  read -r -p "$prompt (Enter = dejar vacía): " answer < /dev/tty
+  printf -v "$var" '%s' "$answer"
+}
+
+# ask_legal_name VARIABLE "pregunta" required|optional: razón social para los contratos, sin los corchetes de los
+# marcadores (el backend los rechaza en producción), comillas simples ni barras invertidas.
+ask_legal_name() {
+  local var="$1" prompt="$2" mode="$3" value
+  while true; do
+    if [[ "$mode" == required ]]; then ask "$var" "$prompt"; else ask_optional "$var" "$prompt"; fi
+    value="${!var}"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    printf -v "$var" '%s' "$value"
+    if [[ -z "$value" && "$mode" == optional ]]; then return 0; fi
+    if [[ "$value" == *"["* || "$value" == *"]"* ]]; then echo "  sin corchetes: escribir la razón social real"
+    elif [[ ${#value} -lt 3 || ${#value} -gt 200 ]]; then echo "  entre 3 y 200 caracteres"
+    elif [[ "$value" == *"'"* || "$value" == *\\* ]]; then echo "  sin comillas simples ni barras invertidas"
+    else return 0; fi
+    unset "QIAO_$var"
+  done
 }
 
 # Valores que van entre comillas simples en .env: no pueden tener comillas simples ni saltos de línea.
@@ -307,6 +344,12 @@ create_env() {
     for k in DOMAIN ACME_EMAIL APP_BASE_URL JWT_SECRET DB_PASSWORD MYSQL_ROOT_PASSWORD; do
       grep -qE "^${k}=.+" "$env_file" || warn "Falta $k en $env_file"
     done
+    if [[ "$(env_value PAYMENT_PROVIDER)" != fake ]]; then
+      for k in APP_CONTRACTS_HK_ENTITY_NAME APP_CONTRACTS_PARTNER_ENTITY_NAME; do
+        [[ "$(env_value "$k")" =~ ^[^][]{3,}$ ]] \
+          || warn "Falta $k en $env_file (razón social de los contratos): con pagos reales el backend no arranca sin ella"
+      done
+    fi
     chown "$QIAO_USER:$QIAO_USER" "$env_file"
     chmod 600 "$env_file"
     return 0
@@ -319,7 +362,7 @@ create_env() {
     ok "copiado desde $QIAO_ENV_SOURCE (mismos secretos que el servidor anterior; borrar ese archivo después)"
     return 0
   fi
-  echo "Sólo se preguntan dominio, email del administrador, correo (SMTP) y pagos (Stripe)."
+  echo "Sólo se preguntan dominio, email del administrador, correo (SMTP), pagos (Stripe) y las razones sociales."
   echo "Los secretos internos (JWT, base de datos, clave del socio, contraseña del admin) se generan aquí."
   echo
   local DOMAIN ADMIN_EMAIL MAIL_MODE SMTP_HOST="" SMTP_PORT="465" SMTP_USER="" SMTP_PASSWORD="" SMTP_FROM=""
@@ -376,8 +419,22 @@ create_env() {
     done
   fi
 
+  echo
+  echo "Razones sociales que se imprimen en cada contrato, tal como figuran en el registro de empresas:"
+  echo "  - la empresa de Hong Kong (la Ltd que vende el servicio a los clientes y les cobra);"
+  echo "  - el socio en China continental (contrata y paga a los ingenieros)."
+  local HK_ENTITY_NAME="" PARTNER_ENTITY_NAME="" names_mode=required
+  if [[ "$PAYMENT_PROVIDER" == fake ]]; then
+    names_mode=optional
+    echo "  Con pagos «fake» (prueba) se pueden dejar vacías: los contratos saldrán con marcadores «[…]», y el backend"
+    echo "  no arrancará con PAYMENT_PROVIDER=stripe hasta completarlas en deploy/.env."
+  fi
+  ask_legal_name HK_ENTITY_NAME "Razón social de la empresa de Hong Kong (p. ej. Qiao Bridge (HK) Limited)" "$names_mode"
+  ask_legal_name PARTNER_ENTITY_NAME "Razón social del socio en China continental (p. ej. 杭州某某人力资源服务有限公司)" "$names_mode"
+
   local v
-  for v in DOMAIN ADMIN_EMAIL SMTP_HOST SMTP_USER SMTP_PASSWORD SMTP_FROM STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET; do
+  for v in DOMAIN ADMIN_EMAIL SMTP_HOST SMTP_USER SMTP_PASSWORD SMTP_FROM STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET \
+           HK_ENTITY_NAME PARTNER_ENTITY_NAME; do
     check_value "$v" "${!v}"
   done
 
@@ -402,13 +459,16 @@ DB_USER='qiao'
 DB_PASSWORD='$(gen_hex 16)'
 MYSQL_ROOT_PASSWORD='$(gen_hex 16)'
 PARTNER_API_KEY='$(gen_hex 24)'
+# Sólo durante una rotación de la clave del socio (la maneja deploy/rotate-secret.sh): la clave anterior
+PARTNER_API_KEY_PREVIOUS=''
 ADMIN_BOOTSTRAP_EMAIL='$ADMIN_EMAIL'
 ADMIN_BOOTSTRAP_PASSWORD='$GENERATED_ADMIN_PASSWORD'
 
 PLATFORM_FEE_PCT='25'
-# Razones sociales de los contratos (completar antes de firmar contratos reales):
-# APP_CONTRACTS_HK_ENTITY_NAME='Nombre legal de la Ltd de Hong Kong'
-# APP_CONTRACTS_PARTNER_ENTITY_NAME='Nombre legal del socio en China'
+# Razones sociales impresas en cada contrato. Con PAYMENT_PROVIDER=stripe son obligatorias: vacías o con «[…]» el
+# backend no arranca.
+APP_CONTRACTS_HK_ENTITY_NAME='$HK_ENTITY_NAME'
+APP_CONTRACTS_PARTNER_ENTITY_NAME='$PARTNER_ENTITY_NAME'
 
 # --- Correo ---
 MAIL_MODE='$MAIL_MODE'
@@ -455,7 +515,9 @@ EOF
     local msgs=("MODO DE PRUEBA: NO usar con clientes reales.")
     [[ "$MAIL_MODE" == log ]] && msgs+=("MAIL_MODE=log: no se envía NINGÚN correo (códigos de acceso sólo en back-office → Outbox).")
     [[ "$PAYMENT_PROVIDER" == fake ]] && msgs+=("PAYMENT_PROVIDER=fake: los pagos son SIMULADOS, nadie paga de verdad.")
-    msgs+=("Para producción: editar $env_file (MAIL_MODE=smtp, PAYMENT_PROVIDER=stripe y sus claves) y docker compose up -d")
+    [[ -n "$HK_ENTITY_NAME" && -n "$PARTNER_ENTITY_NAME" ]] \
+      || msgs+=("Razones sociales vacías: los contratos salen con marcadores «[…]» (APP_CONTRACTS_*).")
+    msgs+=("Para producción: editar $env_file (MAIL_MODE=smtp, PAYMENT_PROVIDER=stripe y sus claves, APP_CONTRACTS_*) y docker compose up -d")
     loud "${msgs[@]}"
   fi
 }
@@ -574,7 +636,8 @@ start_stack() {
       docker compose pull
     else
       echo "      Compilando backend, web y H5 en el servidor (5-15 minutos la primera vez)..."
-      docker compose build
+      # El commit queda en la imagen del backend y lo muestra /api/health (y status.sh).
+      QIAO_BUILD_COMMIT="$(as_qiao git -C "$QIAO_DIR" rev-parse HEAD 2>/dev/null || echo unknown)" docker compose build
     fi
     docker compose up -d --wait --wait-timeout 600 || warn "Algún servicio no quedó sano todavía"
     install -d -m 700 "$STATE_DIR"
@@ -621,7 +684,7 @@ summary() {
 Próximos pasos (detalle en docs/OPERACIONES.md):
   1. Guardar una copia de $QIAO_DIR/deploy/.env en el gestor de contraseñas (sin ella no hay restauración completa).
   2. Stripe: webhook https://$domain/api/payments/stripe/webhook (evento checkout.session.completed).
-  3. Completar APP_CONTRACTS_HK_ENTITY_NAME y APP_CONTRACTS_PARTNER_ENTITY_NAME en deploy/.env.
+  3. Revisar las razones sociales de los contratos (APP_CONTRACTS_HK_ENTITY_NAME, APP_CONTRACTS_PARTNER_ENTITY_NAME).
   4. Entregar al socio la clave PARTNER_API_KEY (está en deploy/.env) por un canal seguro.
   5. Copia externa de backups: completar BACKUP_OSS_* en deploy/.env y probar: sudo $QIAO_DIR/deploy/backup.sh
   6. Configurar 拨测 (云拨测 o 17CE) contra https://$domain/m/ desde Telecom, Unicom y Mobile.
@@ -639,7 +702,7 @@ EOF
 }
 
 main() {
-  [[ $# -ge 1 && "$1" != -h && "$1" != --help ]] || { sed -n '2,17p' "$0"; exit 1; }
+  [[ $# -ge 1 && "$1" != -h && "$1" != --help ]] || { sed -n '2,18p' "$0"; exit 1; }
   local repo_url="$1" branch="${2:-main}"
   [[ "$branch" =~ ^[A-Za-z0-9._/-]+$ ]] || die "Rama inválida: $branch"
   check_system

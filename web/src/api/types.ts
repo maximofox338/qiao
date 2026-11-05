@@ -465,7 +465,9 @@ export interface AdminAccount {
   id: number
   email: string
   roles: AdminRole[] | string
+  /** ACTIVE | DISABLED */
   status?: string
   totpEnabled?: boolean
+  lockedUntil?: string | null
   createdAt?: string
 }

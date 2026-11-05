@@ -3,7 +3,8 @@
 # en 127.0.0.1:18080/18443 y comprueba: HTTPS con la CA interna de Caddy, redirección HTTP→HTTPS, cabeceras de
 # seguridad una sola vez, healthchecks, rotación de logs, permisos del volumen de archivos, re-resolución del
 # backend en nginx, backup → OSS (servidor S3 local) → restore (dry-run, fetch y real), status.sh, update.sh con
-# rollback automático (registro local), rotate-secret.sh, variante SLB y perfil monitoring.
+# rollback automático (registro local), rotate-secret.sh (con la rotación sin corte de la clave del socio), versión y
+# commit en /api/health, arranque negado sin razones sociales con pagos reales, variante SLB y perfil monitoring.
 #
 # Requisitos: Docker, rclone (apt-get install rclone) y los artefactos ya compilados:
 #   (cd backend && mvn -q -DskipTests package) && (cd web && npm ci && npm run build) && (cd h5 && npm ci && npm run build)
@@ -123,7 +124,9 @@ check "Caddyfile de producción válido" docker run --rm -e DOMAIN=qiao.example.
 
 # ---------------------------------------------------------------------------------------------------------------
 title "Arranque (build con artefactos locales)"
-check "build de imágenes" dc build
+BUILD_COMMIT=0123456789abcdef0123456789abcdef01234567
+build_images() { QIAO_BUILD_COMMIT="$BUILD_COMMIT" dc build; }
+check "build de imágenes (APP_COMMIT=$BUILD_COMMIT por build arg)" build_images
 check "up --wait: mysql, backend, nginx y caddy healthy" dc up -d --wait --wait-timeout 420
 dc ps --format 'table {{.Service}}\t{{.State}}\t{{.Health}}\t{{.Ports}}'
 dc exec -T caddy cat /data/caddy/pki/authorities/local/root.crt > "$WORK/caddy-root.crt" 2>/dev/null
@@ -137,6 +140,12 @@ redirect_ok() {
   grep -q '^HTTP/1.1 308' <<< "$h" && grep -qx 'Location: https://qiao.test/m/' <<< "$h"
 }
 health_up() { local out; out="$(https "$BASE/api/health")"; echo "$out"; grep -q '"UP"' <<< "$out"; }
+health_build() {
+  local out
+  out="$(https "$BASE/api/health")"
+  echo "$out"
+  grep -qE '"version":"[0-9]+\.[0-9]+\.[0-9]+(-SNAPSHOT)?"' <<< "$out" && grep -q "\"commit\":\"$BUILD_COMMIT\"" <<< "$out"
+}
 headers_once() { # ruta código-esperado
   local h name n
   h="$(https -o /dev/null -D - "$BASE$1" | tr -d '\r')"
@@ -168,6 +177,7 @@ no_root_pw() { [[ -z "$(docker exec "$PROJECT-backend-1" printenv MYSQL_ROOT_PAS
 check "HTTP → HTTPS (308 a https://qiao.test/m/)" redirect_ok
 check "certificado verificado con la CA interna de Caddy" https -f -o /dev/null "$BASE/"
 check "/api/health por HTTPS → UP" health_up
+check "/api/health muestra la versión de Maven y el commit del build" health_build
 asset="$(docker exec "$PROJECT-nginx-1" sh -c 'ls /usr/share/nginx/html/m/assets | head -n 1')"
 for spec in "/ 200" "/admin 200" "/m/ 200" "/m 301" "/m/assets/$asset 200" "/api/health 200" "/api/admin/dashboard 401" "/no-existe 200"; do
   read -r path code <<< "$spec"
@@ -181,6 +191,19 @@ check "nginx no publica puertos al host" nginx_unpublished
 check "rotación de logs json-file 10m x5 en todos" log_rotation
 check "el backend escribe en el volumen files (/data/uploads)" backend_writes
 check "el backend no recibe MYSQL_ROOT_PASSWORD" no_root_pw
+
+# Sin razones sociales: con pagos fake arranca avisando (prueba); con pagos reales la imagen de producción no arranca.
+fake_mode_warns() { dc logs --no-color backend | grep -q 'TEST MODE: APP_CONTRACTS_HK_ENTITY_NAME'; }
+stripe_refuses() {
+  local out rc
+  out="$(cd "$DEPLOY" && timeout 300 docker compose --env-file "$ENVF" run --rm --no-deps -T -e PAYMENT_PROVIDER=stripe \
+    -e STRIPE_SECRET_KEY=sk_test_qdt0000 -e STRIPE_WEBHOOK_SECRET=whsec_qdt0000 backend 2>&1)"
+  rc=$?
+  grep -E 'APP_CONTRACTS|Exception' <<< "$out" | tail -n 3
+  [[ $rc -ne 0 && "$out" == *"APP_CONTRACTS_HK_ENTITY_NAME (Hong Kong company) and APP_CONTRACTS_PARTNER_ENTITY_NAME"* ]]
+}
+check "sin razones sociales y PAYMENT_PROVIDER=fake: arranca con aviso TEST MODE" fake_mode_warns
+check "sin razones sociales y PAYMENT_PROVIDER=stripe: el backend se niega a arrancar" stripe_refuses
 
 # ---------------------------------------------------------------------------------------------------------------
 title "nginx vuelve a resolver el backend recreado (sin reiniciar nginx)"
@@ -236,7 +259,11 @@ mysql_root "DROP TABLE IF EXISTS zz_antes" > /dev/null 2>&1
 
 # ---------------------------------------------------------------------------------------------------------------
 title "status.sh"
-check "status.sh sin fallas" scripts_env "$DEPLOY/status.sh"
+status_ok() {
+  scripts_env "$DEPLOY/status.sh" || return 1
+  grep -q "commit $BUILD_COMMIT" "$WORK/last.log" && grep -q 'APP_CONTRACTS_HK_ENTITY_NAME vacía' "$WORK/last.log"
+}
+check "status.sh sin fallas (muestra versión y commit, avisa de las razones sociales vacías)" status_ok
 show_log . 40
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -276,6 +303,33 @@ check "rotar DB_PASSWORD (ALTER USER y recrear)" scripts_env "$DEPLOY/rotate-sec
 check "rotar MYSQL_ROOT_PASSWORD" scripts_env "$DEPLOY/rotate-secret.sh" MYSQL_ROOT_PASSWORD
 check "rotar JWT_SECRET" scripts_env "$DEPLOY/rotate-secret.sh" JWT_SECRET
 check "todo sano tras rotar (backup con la clave nueva, login)" after_rotation
+
+# Clave del socio sin corte: la anterior sigue valiendo hasta --finish-partner-rotation, que se niega mientras la
+# auditoría muestre que el socio la sigue usando.
+partner_code() { https -o /dev/null -w '%{http_code}' -H "X-Partner-Key: $1" "$BASE/api/partner/settlements"; }
+partner_ok() { [[ "$(partner_code "$1")" == 200 ]]; }
+partner_401() { [[ "$(partner_code "$1")" == 401 ]]; }
+old_partner="$(env_val PARTNER_API_KEY)"
+both_keys_work() {
+  new_partner="$(env_val PARTNER_API_KEY)"
+  [[ -n "$new_partner" && "$new_partner" != "$old_partner" && "$(env_val PARTNER_API_KEY_PREVIOUS)" == "$old_partner" ]] \
+    && partner_ok "$new_partner" && sleep 1 && partner_ok "$old_partner" && partner_401 "not-a-partner-key-0123456789abcdef"
+}
+second_rotation_refused() { ! scripts_env "$DEPLOY/rotate-secret.sh" PARTNER_API_KEY; }
+status_shows_rotation() { scripts_env "$DEPLOY/status.sh" > "$WORK/status.out" 2>&1; cat "$WORK/status.out"; grep -q 'rotación de PARTNER_API_KEY en curso' "$WORK/status.out"; }
+finish_refused() { ! scripts_env "$DEPLOY/rotate-secret.sh" --finish-partner-rotation; }
+partner_switched() { sleep 1; partner_ok "$new_partner"; }
+only_new_key() { [[ -z "$(env_val PARTNER_API_KEY_PREVIOUS)" ]] && partner_ok "$new_partner" && partner_401 "$old_partner"; }
+check "rotar PARTNER_API_KEY: la anterior pasa a PARTNER_API_KEY_PREVIOUS" scripts_env "$DEPLOY/rotate-secret.sh" PARTNER_API_KEY
+check "durante la rotación valen la clave nueva y la anterior (y ninguna otra)" both_keys_work
+check "no se puede empezar otra rotación sin terminar la actual" second_rotation_refused
+check "status.sh avisa de la rotación en curso" status_shows_rotation
+check "--finish-partner-rotation se niega: la auditoría muestra que el socio usa la anterior" finish_refused
+show_log 'ANTERIOR|NUEVA|todavía' 4
+check "el socio pasa a la clave nueva" partner_switched
+check "--finish-partner-rotation" scripts_env "$DEPLOY/rotate-secret.sh" --finish-partner-rotation
+check "terminada: sólo vale la clave nueva" only_new_key
+check "--finish-partner-rotation sin rotación en curso no hace nada" scripts_env "$DEPLOY/rotate-secret.sh" --finish-partner-rotation
 
 # ---------------------------------------------------------------------------------------------------------------
 title "Variante SLB (sin Caddy; nginx publica el puerto HTTP)"

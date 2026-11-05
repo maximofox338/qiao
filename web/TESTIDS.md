@@ -229,17 +229,19 @@ Layout: `admin-menu-dashboard|companies|engineers|projects|disputes|settlements|
 
 ### Admins `/admin/admins` (SUPERADMIN)
 
-`admin-admins-table`, `admin-admins-row-<id>`, `admin-admins-totp-<id>` (`data-status` = ENABLED / DISABLED), `admin-admins-totp-reset-<id>` (other admins with TOTP; Element Plus confirm box), `admin-new-email`, `admin-new-password`, `admin-new-role-SUPERADMIN|OPS|FINANCE|COMPLIANCE`, `admin-new-submit`, `admin-new-error`.
+`admin-admins-table`, `admin-admins-row-<id>`, `admin-admins-status-<id>` (status tag, `data-status` = ACTIVE / DISABLED), `admin-admins-totp-<id>` (`data-status` = ENABLED / DISABLED), `admin-admins-totp-reset-<id>` (other admins with TOTP; Element Plus confirm box), `admin-new-email`, `admin-new-password`, `admin-new-role-SUPERADMIN|OPS|FINANCE|COMPLIANCE`, `admin-new-submit`, `admin-new-error`.
+Lifecycle (not shown on the signed-in admin's own row): `admin-admins-disable-<id>` (ACTIVE admins; Element Plus confirm box → `.el-message-box__btns .el-button--primary`), `admin-admins-enable-<id>` (DISABLED admins, no confirmation). Refusals (`CANNOT_DISABLE_SELF`, `LAST_SUPERADMIN`) are shown as an error toast.
 
 ### Reviews `/admin/reviews` (OPS, COMPLIANCE)
 
 `admin-reviews-title`, `admin-reviews-refresh`, `admin-reviews-side` with `admin-reviews-side-all|CLIENT|ENGINEER` (radio buttons), `admin-reviews-table`, `admin-review-row-<id>`, `admin-review-stars-<id>`.
 
-### My profile `/admin/profile` (any admin, menu `admin-menu-profile`) — TOTP (spec §14)
+### My profile `/admin/profile` (any admin, menu `admin-menu-profile`) — TOTP (spec §14) and password
 
 `admin-profile-title`, `admin-profile-email`, `admin-totp-status` (`data-status` = ENABLED / DISABLED), `admin-totp-error`.
 Setup: `admin-totp-setup` → `admin-totp-setup-panel` with `admin-totp-qr` (`<img>` with a `data:image/png` QR drawn locally), `admin-totp-secret` (base32 key text), `admin-totp-uri` (hidden input holding the `otpauth://` URI), `admin-totp-code`, `admin-totp-enable`, `admin-totp-cancel`.
 Enabled: `admin-totp-disable-form`, `admin-totp-disable-code`, `admin-totp-disable`.
+Password: `admin-password-form` (section), `admin-password-current`, `admin-password-new` (≥ 12 characters), `admin-password-confirm`, `admin-password-submit`, `admin-password-error` (alert: `CURRENT_PASSWORD_INVALID`, `RATE_LIMITED`, `VALIDATION_ERROR`; the field message is also shown under the field), `admin-password-success` (alert after the change). On success the stored admin token is replaced by the one in the response; every other session of that admin answers 401.
 Login with TOTP: `admin-login-totp` (always visible); a reused code answers `TOTP_INVALID`.
 
 Every admin page has `admin-<section>-title`; list pages also have `admin-<section>-refresh`.

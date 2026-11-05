@@ -19,13 +19,15 @@ import java.util.UUID;
 import java.util.function.UnaryOperator;
 
 /**
- * Issues and verifies HS256 JWTs. Claims: {@code sub} = id, {@code typ} = user|admin, {@code role} or {@code roles}.
+ * Issues and verifies HS256 JWTs. Claims: {@code sub} = id, {@code typ} = user|admin, {@code role} or {@code roles};
+ * admin tokens also carry {@code tv}, the admin's token version when the token was issued.
  */
 @Service
 public class JwtService {
 
     private static final String TYPE_USER = "user";
     private static final String TYPE_ADMIN = "admin";
+    private static final String CLAIM_TOKEN_VERSION = "tv";
 
     private final Algorithm algorithm;
     private final JWTVerifier verifier;
@@ -43,8 +45,9 @@ public class JwtService {
         return issue(userId, TYPE_USER, builder -> builder.withClaim("role", role));
     }
 
-    public IssuedToken issueAdminToken(long adminId, Collection<String> roles) {
-        return issue(adminId, TYPE_ADMIN, builder -> builder.withClaim("roles", List.copyOf(roles)));
+    public IssuedToken issueAdminToken(long adminId, Collection<String> roles, int tokenVersion) {
+        return issue(adminId, TYPE_ADMIN, builder -> builder.withClaim("roles", List.copyOf(roles))
+                .withClaim(CLAIM_TOKEN_VERSION, tokenVersion));
     }
 
     public Optional<AuthPrincipal> parse(String token) {
@@ -56,12 +59,15 @@ public class JwtService {
             if (TYPE_USER.equals(type)) {
                 String role = jwt.getClaim("role").asString();
                 return role == null ? Optional.empty()
-                        : Optional.of(new AuthPrincipal(id, AuthPrincipal.Kind.USER, role, Set.of(), jwt.getId(), expiresAt));
+                        : Optional.of(new AuthPrincipal(id, AuthPrincipal.Kind.USER, role, Set.of(), jwt.getId(), expiresAt, 0));
             }
             if (TYPE_ADMIN.equals(type)) {
                 List<String> roles = jwt.getClaim("roles").asList(String.class);
                 Set<String> adminRoles = roles == null ? Set.of() : Set.copyOf(new LinkedHashSet<>(roles));
-                return Optional.of(new AuthPrincipal(id, AuthPrincipal.Kind.ADMIN, null, adminRoles, jwt.getId(), expiresAt));
+                // tokens issued before token versions existed have no claim: version 0, the column's default
+                Integer tokenVersion = jwt.getClaim(CLAIM_TOKEN_VERSION).asInt();
+                return Optional.of(new AuthPrincipal(id, AuthPrincipal.Kind.ADMIN, null, adminRoles, jwt.getId(), expiresAt,
+                        tokenVersion == null ? 0 : tokenVersion));
             }
             return Optional.empty();
         } catch (JWTVerificationException | IllegalArgumentException e) {

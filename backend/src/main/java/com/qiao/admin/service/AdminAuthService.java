@@ -28,11 +28,22 @@ import java.util.OptionalLong;
 import java.util.UUID;
 
 /**
- * Admin password login with lockout after repeated failures and optional TOTP (each code accepted once). Not transactional as a whole: each
- * attempt runs in its own short transaction so that failure counters persist even though the request fails.
+ * Admin password login with lockout after repeated failures and optional TOTP (each code accepted once), and the
+ * self-service password change. Not transactional as a whole: each attempt runs in its own short transaction so that
+ * failure counters and audit entries persist even though the request fails.
  */
 @Service
 public class AdminAuthService {
+
+    /**
+     * Password-change attempts per admin (wrong current passwords included) in {@link #PASSWORD_CHANGE_WINDOW}.
+     */
+    static final int PASSWORD_CHANGE_ATTEMPTS = 5;
+    static final Duration PASSWORD_CHANGE_WINDOW = Duration.ofMinutes(15);
+    /**
+     * Validation code of {@code newPassword} when it equals the current password.
+     */
+    public static final String SAME_AS_CURRENT = "SAME_AS_CURRENT";
 
     private final AdminUserService adminUserService;
     private final AdminUserMapper adminMapper;
@@ -77,11 +88,60 @@ public class AdminAuthService {
         // serialized and cannot exceed the limit. The outcome is committed before any error is thrown.
         Attempt attempt = transactionTemplate.execute(status -> attempt(found.getId(), password, totp));
         if (attempt.error() != null) {
-            throw new ApiException(attempt.error());
+            throw attempt.error();
         }
-        AdminUser admin = attempt.admin();
+        return session(attempt.admin());
+    }
+
+    /**
+     * Changes the caller's password after checking the current one, and ends every session of that admin (the token
+     * version is incremented, so all its tokens, this one included, stop being accepted). The response carries a new
+     * token so the caller stays signed in on this device. Wrong current passwords answer {@code CURRENT_PASSWORD_INVALID}
+     * (400, not 401: the back-office signs out on any 401), are audited and are rate limited per admin; they do not
+     * count towards the login lockout.
+     */
+    public AdminLoginResponse changePassword(long adminId, String currentPassword, String newPassword) {
+        rateLimiter.check("admin-password:" + adminId, PASSWORD_CHANGE_ATTEMPTS, PASSWORD_CHANGE_WINDOW);
+        if (newPassword == null || newPassword.length() < AdminUserService.MIN_PASSWORD_LENGTH) {
+            throw ApiException.validation("newPassword", "Size");
+        }
+        Attempt attempt = transactionTemplate.execute(status -> passwordChange(adminId, currentPassword, newPassword));
+        if (attempt.error() != null) {
+            throw attempt.error();
+        }
+        return session(attempt.admin());
+    }
+
+    private Attempt passwordChange(long adminId, String currentPassword, String newPassword) {
+        AdminUser admin = adminMapper.selectByIdForUpdate(adminId);
+        if (admin == null || admin.getStatus() != AdminStatus.ACTIVE) {
+            return Attempt.failed(ErrorCode.ACCOUNT_DISABLED);
+        }
+        if (!passwordEncoder.matches(currentPassword, admin.getPasswordHash())) {
+            auditService.log(Actor.admin(adminId), AuditAction.ADMIN_PASSWORD_CHANGE_FAILED, "admin_user", adminId,
+                    Map.of("reason", "BAD_CURRENT_PASSWORD"));
+            return Attempt.failed(ErrorCode.CURRENT_PASSWORD_INVALID);
+        }
+        if (passwordEncoder.matches(newPassword, admin.getPasswordHash())) {
+            return new Attempt(null, ApiException.validation("newPassword", SAME_AS_CURRENT));
+        }
+        int tokenVersion = admin.tokenVersionOrZero() + 1;
+        adminMapper.update(null, new LambdaUpdateWrapper<AdminUser>()
+                .set(AdminUser::getPasswordHash, passwordEncoder.encode(newPassword))
+                .set(AdminUser::getTokenVersion, tokenVersion)
+                .set(AdminUser::getFailedAttempts, 0)
+                .set(AdminUser::getLockedUntil, null)
+                .set(AdminUser::getUpdatedAt, clock.instant())
+                .eq(AdminUser::getId, adminId));
+        auditService.log(Actor.admin(adminId), AuditAction.ADMIN_PASSWORD_CHANGED, "admin_user", adminId,
+                Map.of("sessionsRevoked", true));
+        admin.setTokenVersion(tokenVersion);
+        return new Attempt(admin, null);
+    }
+
+    private AdminLoginResponse session(AdminUser admin) {
         IssuedToken token = jwtService.issueAdminToken(admin.getId(),
-                admin.roleSet().stream().map(AdminRole::name).toList());
+                admin.roleSet().stream().map(AdminRole::name).toList(), admin.tokenVersionOrZero());
         return new AdminLoginResponse(token.token(), AdminLoginResponse.Admin.from(admin));
     }
 
@@ -136,10 +196,13 @@ public class AdminAuthService {
                 Map.of("reason", reason, "locked", locked));
     }
 
-    private record Attempt(AdminUser admin, ErrorCode error) {
+    /**
+     * Outcome of an attempt; the error is thrown only after the attempt's transaction committed.
+     */
+    private record Attempt(AdminUser admin, ApiException error) {
 
         static Attempt failed(ErrorCode error) {
-            return new Attempt(null, error);
+            return new Attempt(null, new ApiException(error));
         }
     }
 }

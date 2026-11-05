@@ -7,7 +7,7 @@ PORT="${E2E_PORT:-8088}"
 cleanup() {
   # E2E_KEEP=1 deja todo corriendo para depurar.
   [[ "${E2E_KEEP:-0}" == "1" ]] && return 0
-  [[ -n "${BACKEND_PID:-}" ]] && kill "$BACKEND_PID" 2>/dev/null || true
+  if [[ -n "${BACKEND_PID:-}" ]]; then kill "$BACKEND_PID" 2>/dev/null || true; fi
   docker rm -f -v qiao-e2e-mysql qiao-e2e-nginx >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
@@ -16,7 +16,7 @@ echo "== MySQL"
 docker rm -f -v qiao-e2e-mysql >/dev/null 2>&1 || true
 docker run -d --name qiao-e2e-mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=qiao -p 3316:3306 mysql:8.4 \
   --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_ai_ci >/dev/null
-for i in $(seq 1 60); do docker exec qiao-e2e-mysql mysqladmin ping -uroot -proot --silent 2>/dev/null && break; sleep 2; done
+for _ in $(seq 1 60); do docker exec qiao-e2e-mysql mysqladmin ping -uroot -proot --silent 2>/dev/null && break; sleep 2; done
 
 echo "== Builds"
 (cd "$ROOT/backend" && mvn -B -q -DskipTests package)
@@ -24,7 +24,9 @@ echo "== Builds"
 (cd "$ROOT/h5" && npm ci --silent && npm run build --silent && npm run check:external --silent)
 
 echo "== Backend"
-JAR="$(ls "$ROOT"/backend/target/*.jar | grep -v plain | head -1)"
+# Los specs entran como varios administradores en menos de un minuto: se relaja el límite de logins por IP (10/min),
+# como en el perfil test de los tests de integración.
+JAR="$ROOT/backend/target/qiao-backend.jar"
 mkdir -p "$ROOT/e2e/test-results"
 SPRING_PROFILES_ACTIVE=dev \
 DB_URL="jdbc:mysql://127.0.0.1:3316/qiao?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC" DB_USER=root DB_PASSWORD=root \
@@ -32,9 +34,9 @@ JWT_SECRET="e2e-secret-e2e-secret-e2e-secret-e2e-secret" APP_BASE_URL="http://lo
 MAIL_MODE=log PAYMENT_PROVIDER=fake PARTNER_API_KEY=e2e-partner-key \
 ADMIN_BOOTSTRAP_EMAIL=admin@e2e.qiao ADMIN_BOOTSTRAP_PASSWORD='E2e-Admin-Password-123' \
 STORAGE=local STORAGE_LOCAL_DIR="$ROOT/e2e/test-results/files" \
-  java -jar "$JAR" > "$ROOT/e2e/test-results/backend.log" 2>&1 &
+  java -Dapp.admin.login-attempts-per-ip-per-minute=100 -jar "$JAR" > "$ROOT/e2e/test-results/backend.log" 2>&1 &
 BACKEND_PID=$!
-for i in $(seq 1 90); do curl -sf http://127.0.0.1:8080/api/health >/dev/null && break; sleep 2; done
+for _ in $(seq 1 90); do curl -sf http://127.0.0.1:8080/api/health >/dev/null && break; sleep 2; done
 curl -sf http://127.0.0.1:8080/api/health >/dev/null || { echo "backend no arrancó"; tail -50 "$ROOT/e2e/test-results/backend.log"; exit 1; }
 
 echo "== Nginx"
@@ -47,7 +49,7 @@ docker run -d --name qiao-e2e-nginx --network host \
   -v "$ROOT/deploy/nginx/templates:/etc/nginx/templates:ro" \
   -v "$SITE:/usr/share/nginx/html:ro" \
   nginx:1.28-alpine >/dev/null
-for i in $(seq 1 30); do curl -sf "http://127.0.0.1:$PORT/" >/dev/null && break; sleep 1; done
+for _ in $(seq 1 30); do curl -sf "http://127.0.0.1:$PORT/" >/dev/null && break; sleep 1; done
 
 echo "== Playwright"
 cd "$ROOT/e2e"

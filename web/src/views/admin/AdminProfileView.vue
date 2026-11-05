@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import QRCode from 'qrcode'
 import { adminApi } from '@/api/admin'
+import { isApiError } from '@/api/http'
 import type { TotpSetup } from '@/api/types'
 import { useAdminStore } from '@/stores/admin'
-import { errorText, notifySuccess } from '@/utils/errors'
+import { errorText, fieldErrorsOf, notifySuccess } from '@/utils/errors'
 
 const { t } = useI18n()
 const admin = useAdminStore()
@@ -63,6 +64,50 @@ function cancelSetup() {
   qr.value = ''
   code.value = ''
   error.value = ''
+}
+
+/* ---------------------------------------------------------------- password */
+
+const pw = reactive({ current: '', next: '', confirm: '' })
+const pwErrors = ref<Record<string, string>>({})
+const pwError = ref('')
+const pwDone = ref(false)
+const pwBusy = ref(false)
+
+function validatePassword(): Record<string, string> {
+  const e: Record<string, string> = {}
+  if (!pw.current) e.currentPassword = t('fieldErrors.REQUIRED')
+  if (pw.next.length < 12) e.newPassword = t('admin.profile.passwordMin')
+  else if (pw.next === pw.current) e.newPassword = t('admin.profile.passwordSame')
+  if (pw.confirm !== pw.next) e.confirm = t('admin.profile.passwordMismatch')
+  return e
+}
+
+/**
+ * The backend ends every session of this admin and returns a new token for this one, which replaces the stored token
+ * so the back-office stays signed in here.
+ */
+async function changePassword() {
+  pwError.value = ''
+  pwDone.value = false
+  pwErrors.value = validatePassword()
+  if (Object.keys(pwErrors.value).length) return
+  pwBusy.value = true
+  try {
+    const res = await adminApi.changePassword(pw.current, pw.next)
+    admin.setSession(res.token, res.admin)
+    pw.current = ''
+    pw.next = ''
+    pw.confirm = ''
+    pwDone.value = true
+    notifySuccess(t('admin.profile.passwordChanged'))
+  } catch (e) {
+    if (isApiError(e, 'CURRENT_PASSWORD_INVALID')) pwErrors.value = { currentPassword: errorText(e) }
+    else if (isApiError(e, 'VALIDATION_ERROR')) pwErrors.value = fieldErrorsOf(e)
+    pwError.value = errorText(e)
+  } finally {
+    pwBusy.value = false
+  }
 }
 </script>
 
@@ -128,12 +173,60 @@ function cancelSetup() {
         </el-button>
       </el-form>
     </section>
+
+    <section class="q-card password" data-testid="admin-password-form">
+      <div class="q-card-head">
+        <h2>{{ t('admin.profile.passwordTitle') }}</h2>
+      </div>
+      <p class="q-muted">{{ t('admin.profile.passwordIntro') }}</p>
+      <el-alert v-if="pwError" type="error" :closable="false" :title="pwError" show-icon data-testid="admin-password-error" class="err" />
+      <el-alert
+        v-if="pwDone"
+        type="success"
+        :closable="false"
+        :title="t('admin.profile.passwordChanged')"
+        show-icon
+        data-testid="admin-password-success"
+        class="err"
+      />
+      <el-form label-position="top" class="password-form" @submit.prevent="changePassword">
+        <el-form-item :label="t('admin.profile.currentPassword')" :error="pwErrors.currentPassword">
+          <el-input
+            v-model="pw.current"
+            type="password"
+            show-password
+            autocomplete="current-password"
+            data-testid="admin-password-current"
+          />
+        </el-form-item>
+        <el-form-item :label="t('admin.profile.newPassword')" :error="pwErrors.newPassword">
+          <el-input v-model="pw.next" type="password" show-password autocomplete="new-password" data-testid="admin-password-new" />
+          <div class="q-muted q-small">{{ t('admin.profile.passwordMin') }}</div>
+        </el-form-item>
+        <el-form-item :label="t('admin.profile.confirmPassword')" :error="pwErrors.confirm">
+          <el-input
+            v-model="pw.confirm"
+            type="password"
+            show-password
+            autocomplete="new-password"
+            data-testid="admin-password-confirm"
+          />
+        </el-form-item>
+        <el-button type="primary" native-type="submit" :loading="pwBusy" data-testid="admin-password-submit">
+          {{ t('admin.profile.changePassword') }}
+        </el-button>
+      </el-form>
+    </section>
   </div>
 </template>
 
 <style scoped>
-.totp {
+.totp,
+.password {
   max-width: 720px;
+}
+.password-form {
+  max-width: 360px;
 }
 .err {
   margin-bottom: 12px;

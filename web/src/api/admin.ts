@@ -33,6 +33,11 @@ export const adminApi = {
   totpEnable: (code: string) => api.post<AdminInfo>('/api/admin/me/totp/enable', { code }),
   totpDisable: (code: string) => api.post<AdminInfo>('/api/admin/me/totp/disable', { code }),
   resetTotp: (adminId: number) => api.post<AdminAccount>(`/api/admin/admins/${adminId}/totp/reset`),
+  /** Ends every other session of this admin; the answer carries a new token for this one. */
+  changePassword: (currentPassword: string, newPassword: string) =>
+    api.post<AdminLoginResponse>('/api/admin/me/password', { currentPassword, newPassword }),
+  disableAdmin: (adminId: number) => api.post<AdminAccount>(`/api/admin/admins/${adminId}/disable`),
+  enableAdmin: (adminId: number) => api.post<AdminAccount>(`/api/admin/admins/${adminId}/enable`),
   dashboard: () => api.get<AdminDashboard>('/api/admin/dashboard'),
 
   companies: async (status: string, page: number, size: number) =>

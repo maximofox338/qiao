@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -36,5 +37,18 @@ public class AdminUserController {
                                          @Valid @RequestBody CreateAdminRequest request) {
         return ApiResponse.ok(adminUserService.create(request.email(), request.password(), request.roles(),
                 Actor.admin(principal.id())));
+    }
+
+    /**
+     * Disables another admin: login is refused and its existing tokens stop working on the next request.
+     */
+    @PostMapping("/{id}/disable")
+    public ApiResponse<AdminView> disable(@AuthenticationPrincipal AuthPrincipal principal, @PathVariable long id) {
+        return ApiResponse.ok(adminUserService.disable(principal.id(), id));
+    }
+
+    @PostMapping("/{id}/enable")
+    public ApiResponse<AdminView> enable(@AuthenticationPrincipal AuthPrincipal principal, @PathVariable long id) {
+        return ApiResponse.ok(adminUserService.enable(principal.id(), id));
     }
 }

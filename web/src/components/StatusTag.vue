@@ -37,6 +37,7 @@ const TYPES: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'primary
   CRITICAL: 'danger',
   LIMIT: 'danger',
   TERMINATED: 'danger',
+  DISABLED: 'danger',
   DECLINED: 'info',
   DRAFT: 'info',
   CANCELLED: 'info',

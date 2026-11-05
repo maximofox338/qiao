@@ -21,7 +21,7 @@ Paquete `com.qiao`, un subpaquete por módulo, cada uno con `domain` (entidades,
 | `compliance` | consentimientos, `transfer_event`, auditoría, textos legales (`resources/legal`), palabras clave |
 | `moderation` | revisiones del back-office (empresas, ingenieros, proyectos, disputas) |
 | `notify` | correo y `mail_outbox` |
-| `admin` | administradores, login, TOTP (alta con QR, desactivación, reinicio por SUPERADMIN), panel, arranque del primer admin y datos demo |
+| `admin` | administradores, login, cambio de la propia contraseña, alta/baja por SUPERADMIN, TOTP (alta con QR, desactivación, reinicio por SUPERADMIN), panel, arranque del primer admin y datos demo |
 | `team` | equipos de ingenieros, invitaciones por alias (las postulaciones y contratos de equipo viven en `project` y `contract`) |
 | `review` | valoraciones tras un contrato completado (una por lado) y su listado en el back-office |
 
@@ -40,12 +40,16 @@ docker run -d --name qiao-mysql-dev -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABAS
 SPRING_PROFILES_ACTIVE=dev APP_DEMO_SEED=true mvn spring-boot:run
 # o bien: mvn -DskipTests package && SPRING_PROFILES_ACTIVE=dev APP_DEMO_SEED=true java -jar target/qiao-backend.jar
 
-curl localhost:8080/api/health
+curl localhost:8080/api/health          # {"status":"UP","version":"0.1.0-SNAPSHOT","commit":"unknown"}
 curl localhost:8080/api/public/categories
 ```
 
-- Flyway crea el esquema (`db/migration/V1__init.sql`) y las categorías; `V2__teams.sql`, `V3__reviews.sql` y
-  `V4__admin_totp.sql` añaden equipos, valoraciones y TOTP de administradores.
+- Flyway crea el esquema (`db/migration/V1__init.sql`) y las categorías; `V2__teams.sql`, `V3__reviews.sql`,
+  `V4__admin_totp.sql` y `V5__admin_token_version.sql` añaden equipos, valoraciones, TOTP de administradores y la
+  versión de sesión de cada admin. Las migraciones nuevas tienen que ser compatibles con la versión anterior
+  (expandir / contraer): ver `docs/OPERACIONES.md` 5.1.
+- Flyway está fijado en 11.20.3 (`flyway.version` en `pom.xml`): la 11.7 que trae Spring Boot 3.5 avisa que no
+  conoce MySQL 8.4.
 - Admin de desarrollo: `admin@qiao.local` / `QiaoAdmin-dev-2026` (SUPERADMIN).
 - Datos demo (`APP_DEMO_SEED=true`, solo perfil `dev`, idempotente): cliente `client@demo.qiao` con empresa aprobada,
   ingeniero `engineer@demo.qiao` aprobado (`partnerRef` `PARTNER-DEMO-001`) y un proyecto OPEN con dos hitos.
@@ -62,6 +66,12 @@ curl localhost:8080/api/public/categories
 | `dev` | desarrollo local con valores por defecto seguros, `/api/dev/last-otp`, datos demo opcionales |
 | `test` | tests de integración (Testcontainers), límites de rate relajados |
 | `prod` | sin valores por defecto para secretos, Swagger desactivado, `PAYMENT_PROVIDER=stripe` por defecto; no se puede combinar con `dev` y nunca expone `/api/dev/**` |
+
+Con `prod` (o sin perfil `dev`/`test`) `ProductionSafetyCheck` se niega a arrancar si: `JWT_SECRET`,
+`PARTNER_API_KEY`, `PARTNER_API_KEY_PREVIOUS` o `ADMIN_BOOTSTRAP_PASSWORD` tienen un valor público del repo; una
+clave del socio tiene menos de 32 caracteres, la anterior es igual a la actual o está sin actual; `STRIPE_API_BASE`
+no es Stripe; o las razones sociales `APP_CONTRACTS_*` están vacías o con un marcador `[…]` (salvo con
+`PAYMENT_PROVIDER=fake`, que arranca con un aviso `TEST MODE`).
 
 Sin perfil se usa la configuración base (`application.yml`), que exige todas las variables obligatorias.
 
@@ -83,9 +93,11 @@ Sin perfil se usa la configuración base (`application.yml`), que exige todas la
 | `STORAGE_LOCAL_DIR` | no (`/data/uploads`) | carpeta de adjuntos con `STORAGE=local` |
 | `OSS_ENDPOINT`, `OSS_BUCKET`, `OSS_ACCESS_KEY_ID`, `OSS_ACCESS_KEY_SECRET` | con `oss` | Aliyun OSS |
 | `PARTNER_API_KEY` | para la API del socio | cabecera `X-Partner-Key`; vacía = API del socio desactivada; en prod mínimo 32 caracteres |
+| `PARTNER_API_KEY_PREVIOUS` | no (vacía) | sólo durante una rotación (`deploy/rotate-secret.sh`): la clave anterior, que sigue valiendo; cada llamada con ella deja `partnerKey=PREVIOUS` y un aviso en la auditoría. En prod: ≥ 32 caracteres y distinta de la actual |
 | `ADMIN_BOOTSTRAP_EMAIL`, `ADMIN_BOOTSTRAP_PASSWORD` | primer arranque | crea el primer SUPERADMIN si no hay ninguno (contraseña ≥ 12; los valores de ejemplo se rechazan en prod) |
 | `APP_DEMO_SEED` | no (`false`) | solo perfil `dev`: crea los datos demo |
-| `APP_CONTRACTS_HK_ENTITY_NAME`, `APP_CONTRACTS_PARTNER_ENTITY_NAME` | sí | razones sociales que aparecen en los contratos |
+| `APP_CONTRACTS_HK_ENTITY_NAME`, `APP_CONTRACTS_PARTNER_ENTITY_NAME` | sí (salvo `PAYMENT_PROVIDER=fake`) | razones sociales de la Ltd de Hong Kong y del socio en China que aparecen en los contratos; vacías o con `[…]` el arranque de producción falla |
+| `APP_COMMIT` | no (`unknown`) | commit del build que muestra `GET /api/health`; en la imagen Docker lo fija el build arg del mismo nombre |
 
 ## Tests
 
@@ -106,6 +118,12 @@ socio, borrado de cuenta y bloqueo del admin tras 5 contraseñas erróneas. Adem
 - `ReviewIT`: valoraciones de ambos lados, promedio en el perfil seudonimizado, textos solo para el back-office.
 - `AdminTotpIT` / `TotpVerifierTest`: alta de TOTP, login sin reutilizar el mismo paso de 30 s, desactivación y
   reinicio por SUPERADMIN.
+- `AdminLifecycleIT` / `AdminLifecycleGuardTest`: cambio de la propia contraseña (las otras sesiones dejan de valer,
+  límite de intentos, tokens anteriores a V5), desactivación y reactivación por SUPERADMIN (no a uno mismo ni al
+  último SUPERADMIN activo, dos SUPERADMIN a la vez) y auditoría.
+- `PartnerKeyRotationIT` / `PartnerKeyFilterTest`: las dos claves del socio durante una rotación y el aviso en la
+  auditoría (el perfil `test` define `api-key-previous`).
+- `HealthIT`: `version` y `commit` en `/api/health`.
 - `StripePaymentIT`: `PAYMENT_PROVIDER=stripe` contra la imagen oficial `stripe/stripe-mock:v0.197.0`
   (Testcontainers, se descarga de Docker Hub la primera vez): creación de la sesión de checkout, webhook
   `checkout.session.completed` firmado como documenta Stripe, firmas inválidas y reembolso. Arranca un segundo
@@ -114,7 +132,7 @@ socio, borrado de cuenta y bloqueo del admin tras 5 contraseñas erróneas. Adem
 ## Docker
 
 ```bash
-docker build -t qiao-backend .
+docker build --build-arg APP_COMMIT="$(git rev-parse HEAD)" -t qiao-backend .
 # desde China continental: --build-arg MAVEN_MIRROR=https://maven.aliyun.com/repository/public
 docker run -p 8080:8080 -e DB_URL=... -e DB_USER=... -e DB_PASSWORD=... -e JWT_SECRET=... \
   -e APP_BASE_URL=https://... -e PAYMENT_PROVIDER=fake -v qiao-uploads:/data/uploads qiao-backend

@@ -42,7 +42,8 @@ services:
     # En modo build la imagen se construye aquí y se etiqueta con QIAO_IMAGE_TAG (lo maneja update.sh),
     # así una versión anterior queda disponible para volver atrás.
     image: qiao-backend:${QIAO_IMAGE_TAG:-local}
-    build: { context: ../backend }
+    # QIAO_BUILD_COMMIT lo pasa update.sh (o install.sh) al compilar: GET /api/health lo muestra como "commit".
+    build: { context: ../backend, args: { APP_COMMIT: "${QIAO_BUILD_COMMIT:-unknown}" } }
     restart: unless-stopped
     env_file: .env
     environment:

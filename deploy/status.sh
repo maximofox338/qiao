@@ -27,7 +27,17 @@ done
 
 step "Salud de punta a punta"
 if body="$(edge_curl /api/health -f 2>&1)" && [[ "$body" == *'"UP"'* ]]; then
-  ok "/api/health → UP"
+  # Versión de Maven y commit con que se construyó la imagen en marcha (los da /api/health).
+  version="$(sed -n 's/.*"version":"\([^"]*\)".*/\1/p' <<< "$body")"
+  commit="$(sed -n 's/.*"commit":"\([^"]*\)".*/\1/p' <<< "$body")"
+  ok "/api/health → UP (backend ${version:-?}, commit ${commit:-?})"
+  tag="$(env_get QIAO_IMAGE_TAG local)"
+  tag_sha="${tag%%-*}"
+  commit_sha="${commit%%-*}"
+  if [[ "$tag_sha" =~ ^[0-9a-f]{7,40}$ && "$commit_sha" =~ ^[0-9a-f]{7,40}$ \
+        && "$commit_sha" != "$tag_sha"* && "$tag_sha" != "$commit_sha"* ]]; then
+    warn "el backend en marcha es del commit $commit, pero QIAO_IMAGE_TAG=$tag: ¿se cambió la imagen a mano? (update.sh --history)"
+  fi
 else
   bad "/api/health no responde bien: $body"
 fi
@@ -109,8 +119,19 @@ else
   fi
 fi
 
+step "Configuración"
 if [[ "$(env_get PAYMENT_PROVIDER)" == fake ]]; then warn "PAYMENT_PROVIDER=fake: los pagos NO son reales"; fi
 if [[ "$(env_get MAIL_MODE)" == log ]]; then warn "MAIL_MODE=log: los correos NO se envían"; fi
+for var in APP_CONTRACTS_HK_ENTITY_NAME APP_CONTRACTS_PARTNER_ENTITY_NAME; do
+  name="$(env_get "$var")"
+  if [[ -z "$name" || "$name" == *"["* || "$name" == *"]"* ]]; then
+    # Con PAYMENT_PROVIDER=stripe el backend ni arranca así (se ve arriba como backend no sano).
+    warn "$var vacía o con un marcador: los contratos salen con «[…]» en lugar de la razón social (sólo vale para una prueba con PAYMENT_PROVIDER=fake)"
+  fi
+done
+if [[ -n "$(env_get PARTNER_API_KEY_PREVIOUS)" ]]; then
+  warn "rotación de PARTNER_API_KEY en curso desde $(cat "$STATE_DIR/partner-key-rotation" 2>/dev/null || echo '?') UTC: la clave anterior sigue valiendo. Cuando el socio use la nueva: rotate-secret.sh --finish-partner-rotation"
+fi
 
 echo
 if [[ $problems -eq 0 ]]; then

@@ -76,7 +76,7 @@ All tables: `id BIGINT AUTO_INCREMENT PK`, `created_at`, `updated_at` (DATETIME(
 - `GET /api/public/categories` → `[{code, name:{en,es,zh}, allowed}]`
 - `GET /api/public/legal/{doc}?locale=` doc ∈ `terms, privacy, client-declarations, engineer-declaration, cross-border` → `{doc, version, locale, title, body}` (markdown texts in `resources/legal/{doc}.{locale}.md`, locales en, es, zh-CN; fall back to en).
 - `GET /api/public/config` → `{feePct, paymentProvider, locales}`
-- `GET /api/health` → `{status:"UP"}`
+- `GET /api/health` → `{status:"UP", version, commit}` (§16)
 
 ### Auth (users)
 - `POST /api/auth/otp/request {email, locale}` → `{sent:true}`
@@ -142,6 +142,7 @@ All tables: `id BIGINT AUTO_INCREMENT PK`, `created_at`, `updated_at` (DATETIME(
 - Settlements (FINANCE): `POST /api/admin/settlements {period}` (lines = ACCEPTED milestones with PAID payment and no settlement line; error `NOTHING_TO_SETTLE`), `GET /api/admin/settlements`, `GET /api/admin/settlements/{id}`, `GET /api/admin/settlements/{id}/export.csv` (columns: line_id, alias, partner_ref, engineer_email, contract_milestone_id, project_title, talent_amount_usd), `POST /api/admin/settlements/{id}/mark-exported`
 - Compliance (COMPLIANCE, SUPERADMIN): `GET /api/admin/audit?action=&actorType=&page=`, `GET /api/admin/transfers/summary?year=` → `{year, uniqueEngineers:{PSEUDONYMIZED_PROFILE, FULL_CV, ANY}, thresholds:{warn:50000, critical:80000, limit:100000}, level: OK|WARN|CRITICAL|LIMIT}`
 - `GET /api/admin/outbox` (mail log), `GET /api/admin/admins`, `POST /api/admin/admins {email, password, roles[]}` (SUPERADMIN)
+- `POST /api/admin/me/password {currentPassword, newPassword}` (any admin), `POST /api/admin/admins/{id}/disable`, `/enable` (SUPERADMIN): §16
 
 ## 8. Security
 - BCrypt, constant-time compares, rate limits (in-memory Bucket4j or simple sliding window; Redis optional later).
@@ -219,3 +220,11 @@ Clients can hire a **team** of engineers for a project. A team is only a way to 
 ## 15. Stripe test mode without real keys
 - `STRIPE_API_BASE` (empty = `https://api.stripe.com`) points the Stripe SDK at another host; it exists to test against the official `stripe/stripe-mock` image and production refuses any other value at startup.
 - `StripePaymentIT` runs with `PAYMENT_PROVIDER=stripe` against `stripe/stripe-mock` (Testcontainers): checkout session creation, a correctly signed `checkout.session.completed` webhook (signature computed as Stripe documents: `t=<unix>,v1=hex(HMAC-SHA256(secret, t + "." + payload))`) that marks the payment PAID and the milestone FUNDED, idempotent retries, `async_payment_succeeded`, non-ASCII payloads, badly signed / tampered / expired / unsigned events (`400 INVALID_SIGNATURE`) and a refund after a dispute resolved as `REFUND`.
+
+## 16. Hardening — admin lifecycle, partner key rotation, build version
+1. **Admin sessions.** Admin tokens carry claim `tv` = `admin_user.token_version` (`V5__admin_token_version.sql`, default 0; a token without the claim counts as 0). A token is accepted only while the admin is `ACTIVE` and `tv` equals the column; changing the password or disabling the admin increments it.
+2. `POST /api/admin/me/password {currentPassword, newPassword}` → `{token, admin}` (same as login). New password 12–200 characters, bcrypt, different from the current one (`VALIDATION_ERROR`, `fields.newPassword = SAME_AS_CURRENT`). Wrong current password: `CURRENT_PASSWORD_INVALID` 400. 5 attempts per admin per 15 min (`RATE_LIMITED`). Every other session of the admin ends; the returned token replaces the caller's. Audit: `ADMIN_PASSWORD_CHANGED`, `ADMIN_PASSWORD_CHANGE_FAILED`.
+3. `POST /api/admin/admins/{id}/disable` and `/enable` (SUPERADMIN) → admin view `{id, email, roles, status, totpEnabled, lockedUntil, createdAt}`. Disable: `CANNOT_DISABLE_SELF` 409, `LAST_SUPERADMIN` 409 (the last active SUPERADMIN), 404 unknown; existing tokens stop working on the next request; login answers `ACCOUNT_DISABLED` 403. Enable clears a login lock; tokens from before the disable stay invalid. Both are idempotent. Audit: `ADMIN_DISABLED`, `ADMIN_ENABLED`.
+4. **Partner key rotation.** `PARTNER_API_KEY_PREVIOUS` (optional) is accepted next to `PARTNER_API_KEY` (constant-time comparisons). Audit entries of a call authenticated with it carry `detail.partnerKey = "PREVIOUS"` and `detail.warning`. In production it must be ≥ 32 characters and differ from the current key.
+5. **Contract party names.** In production the backend refuses to start while `APP_CONTRACTS_HK_ENTITY_NAME` or `APP_CONTRACTS_PARTNER_ENTITY_NAME` is empty or contains `[`/`]`, except with `PAYMENT_PROVIDER=fake` (test run: warning, placeholders kept).
+6. `GET /api/health` → `{status, version, commit}`: `version` = Maven project version, `commit` = `APP_COMMIT` (Docker build argument), `unknown` when absent.

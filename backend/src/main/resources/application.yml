@@ -67,6 +67,8 @@ springdoc:
 
 app:
   base-url: ${APP_BASE_URL}
+  # git commit of the build (Docker build argument APP_COMMIT, set by CI and deploy/update.sh), shown by /api/health
+  commit: ${APP_COMMIT:unknown}
   fee-pct: ${PLATFORM_FEE_PCT:25}
   jwt:
     secret: ${JWT_SECRET}
@@ -89,6 +91,8 @@ app:
       access-key-secret: ${OSS_ACCESS_KEY_SECRET:}
   partner:
     api-key: ${PARTNER_API_KEY:}
+    # during a rotation (deploy/rotate-secret.sh): the key being replaced, still accepted until the rotation is finished
+    api-key-previous: ${PARTNER_API_KEY_PREVIOUS:}
   admin:
     bootstrap-email: ${ADMIN_BOOTSTRAP_EMAIL:}
     bootstrap-password: ${ADMIN_BOOTSTRAP_PASSWORD:}

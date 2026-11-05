@@ -114,9 +114,11 @@ Comprobar desde tu computadora: `nslookup tu-dominio.com` debe devolver esa IP. 
 4. El script muestra una **clave pública** y pide agregarla en GitHub: repo → *Settings → Deploy keys →
    Add deploy key*, título `qiao-<servidor>`, **sin** marcar *Allow write access*. Escribir `listo`.
 5. Responde las preguntas: dominio, email del administrador (también recibe los avisos de Let's Encrypt),
-   correo (`smtp` con usuario y contraseña de DirectMail, o `log` para una prueba) y pagos (`stripe` con la
-   clave secreta y el secreto del webhook, o `fake` para una prueba). Todo lo demás (JWT, contraseñas de la
-   base, clave del socio, contraseña del admin) lo genera el script.
+   correo (`smtp` con usuario y contraseña de DirectMail, o `log` para una prueba), pagos (`stripe` con la
+   clave secreta y el secreto del webhook, o `fake` para una prueba) y las **razones sociales** que se imprimen
+   en cada contrato: la de la Ltd de Hong Kong y la del socio en China continental, tal como figuran en el
+   registro de empresas. Con `stripe` son obligatorias; con `fake` se pueden dejar vacías (ver 2.8). Todo lo
+   demás (JWT, contraseñas de la base, clave del socio, contraseña del admin) lo genera el script.
 6. Espera: instala Docker, configura firewall, swap, actualizaciones automáticas y backups, compila y arranca
    (10–20 minutos la primera vez).
 7. Al final muestra las URL y **la contraseña del administrador una sola vez**: guardarla ya en el gestor.
@@ -136,23 +138,31 @@ continental sin VPN** (o con el 拨测 de la sección 9).
    (nota segura). Sin él no se puede restaurar en otro servidor con los mismos secretos.
 2. **Stripe**: en el panel de Stripe, *Developers → Webhooks → Add endpoint*:
    `https://tu-dominio.com/api/payments/stripe/webhook`, evento `checkout.session.completed`.
-3. **Razones sociales de los contratos**: completar en `.env` `APP_CONTRACTS_HK_ENTITY_NAME` y
-   `APP_CONTRACTS_PARTNER_ENTITY_NAME` (si no, los contratos muestran marcadores entre corchetes).
-4. **Socio chino**: entregarle `PARTNER_API_KEY` (está en `.env`) por un canal seguro.
-5. **Backups fuera del servidor**: configurar OSS (6.2).
-6. **拨测** desde China (9.3).
-7. **SSH sólo con clave**: si `status.sh`/`install.sh` avisan que SSH acepta contraseñas, en
+3. **Razones sociales de los contratos**: comprobar en `.env` `APP_CONTRACTS_HK_ENTITY_NAME` y
+   `APP_CONTRACTS_PARTNER_ENTITY_NAME` (las pregunta `install.sh`). Con `PAYMENT_PROVIDER=stripe` el backend **no
+   arranca** si están vacías o todavía tienen un marcador entre corchetes (`[…]`, `[dev]`).
+4. **Cambiar la contraseña del admin** que mostró la instalación por una propia: back-office → *Mi perfil* →
+   *Contraseña* (ver 7.1), y activar ahí mismo la verificación en dos pasos.
+5. **Socio chino**: entregarle `PARTNER_API_KEY` (está en `.env`) por un canal seguro.
+6. **Backups fuera del servidor**: configurar OSS (6.2).
+7. **拨测** desde China (9.3).
+8. **SSH sólo con clave**: si `status.sh`/`install.sh` avisan que SSH acepta contraseñas, en
    `/etc/ssh/sshd_config` poner `PasswordAuthentication no` y `systemctl restart ssh` (antes comprobar que
    entrás con la clave en otra ventana).
 
 ### 2.8 Pasar de modo prueba a producción
 Si se instaló con `MAIL_MODE=log` o `PAYMENT_PROVIDER=fake`, **no abrir a clientes reales**: los correos no
-salen (los códigos de acceso sólo se ven en back-office → Outbox) y los pagos son simulados. Para pasar a real:
+salen (los códigos de acceso sólo se ven en back-office → Outbox) y los pagos son simulados (la página de pago dice
+«modo de prueba»). Con `fake`, además, se pudo instalar sin razones sociales: el backend arranca igual, con un aviso
+`TEST MODE` en sus logs, y los contratos salen con marcadores `[…]`. Para pasar a real:
 ```bash
-sudo nano /opt/qiao/deploy/.env     # MAIL_MODE='smtp', SMTP_*; PAYMENT_PROVIDER='stripe', STRIPE_*
+sudo nano /opt/qiao/deploy/.env     # MAIL_MODE='smtp', SMTP_*; PAYMENT_PROVIDER='stripe', STRIPE_*;
+                                    # APP_CONTRACTS_HK_ENTITY_NAME y APP_CONTRACTS_PARTNER_ENTITY_NAME (razones sociales)
 cd /opt/qiao/deploy && sudo docker compose up -d
 sudo /opt/qiao/deploy/status.sh
 ```
+Con `stripe` y sin razones sociales el backend se niega a arrancar (`docker compose logs backend` lo dice:
+«APP_CONTRACTS_… must hold the registered legal name…»): completarlas y repetir `docker compose up -d`.
 Después de cualquier cambio en `.env` hace falta `docker compose up -d` (`docker compose restart` **no** relee
 el archivo). Actualizar la copia del `.env` en el gestor.
 
@@ -161,8 +171,9 @@ el archivo). Actualizar la copia del `.env` en el gestor.
 ## 3. Rutinas
 
 ### Diaria (2 minutos)
-- `sudo /opt/qiao/deploy/status.sh` → «Todo en orden». Revisa contenedores, salud de punta a punta, que la CSP
-  y HSTS salgan una vez, certificado, disco, memoria, edad del último backup y de la última subida a OSS.
+- `sudo /opt/qiao/deploy/status.sh` → «Todo en orden». Revisa contenedores, salud de punta a punta (con la versión
+  y el commit del backend en marcha), que la CSP y HSTS salgan una vez, certificado, disco, memoria, edad del último
+  backup y de la última subida a OSS, y avisa de una rotación de la clave del socio sin terminar.
 - Mirar si llegaron alertas del 拨测 o de Uptime Kuma.
 
 ### Semanal (15 minutos)
@@ -195,7 +206,10 @@ el archivo). Actualizar la copia del `.env` en el gestor.
 5. Revisar en RAM que no haya AccessKeys sin uso o de personas que ya no trabajan en el proyecto.
 
 ### Anual
-- Rotar `JWT_SECRET`, `PARTNER_API_KEY` y las contraseñas de la base (sección 7).
+- Rotar `JWT_SECRET`, `PARTNER_API_KEY` (en dos pasos, sin corte para el socio) y las contraseñas de la base
+  (sección 7).
+- Revisar en back-office → *Administradores* que no queden cuentas activas de personas que ya no trabajan en el
+  proyecto (desactivarlas, 7.1).
 - Ensayo completo de recuperación en un ECS nuevo (6.5) y borrarlo al terminar.
 
 ---
@@ -212,7 +226,8 @@ Qué hace `update.sh`: descarga las imágenes (si falla, no cambia nada) → gua
 poder volver → backup de la base y los archivos (`manual/<fecha>-pre-<sha>`) → despliega backend y nginx →
 espera los healthchecks y que `/api/health` y `/m/` respondan por HTTPS → si algo falla **vuelve sola a la
 versión anterior**. La API queda sin servicio 1–2 minutos mientras el backend arranca (la web y `/m/` siguen
-cargando). Cada paso queda en `update.sh --history`.
+cargando). Cada paso queda en `update.sh --history`. Qué versión quedó en marcha: `status.sh` («backend 0.1.0,
+commit <sha>») o `https://tu-dominio.com/api/health` (`version` = versión de Maven, `commit` = commit del build).
 
 Si el commit cambió archivos de `deploy/` (compose, Caddyfile, scripts), traerlos antes:
 `sudo -u qiao git -C /opt/qiao pull --ff-only`.
@@ -221,6 +236,7 @@ Si el commit cambió archivos de `deploy/` (compose, Caddyfile, scripts), traerl
 ```bash
 sudo /opt/qiao/deploy/update.sh          # git pull + compila con tag = commit + despliega (+ vuelta atrás)
 ```
+El commit compilado queda dentro de la imagen y lo muestran `/api/health` y `status.sh`.
 La compilación tarda 5–15 minutos y usa mucha CPU y memoria (la versión actual sigue atendiendo mientras
 tanto). Por eso conviene pasar al modo de imágenes (4.3) en cuanto CI esté configurado.
 
@@ -258,8 +274,31 @@ gestor de contraseñas.
   sudo /opt/qiao/deploy/restore.sh --list                       # buscar manual/<fecha>-pre-<sha>
   sudo /opt/qiao/deploy/restore.sh --db-only <fecha>-pre-<sha>
   ```
-  Por eso las migraciones nuevas deben ser compatibles con la versión anterior (agregar columnas/tablas;
-  borrar o renombrar en una versión posterior).
+  Por eso las migraciones nuevas deben ser compatibles con la versión anterior (ver 5.1).
+
+### 5.1 Migraciones compatibles hacia atrás (expandir / contraer)
+`update.sh` vuelve atrás la **imagen**, nunca el **esquema**: después de un rollback la versión anterior corre contra
+la base ya migrada por la nueva. Toda migración tiene que dejar la base usable por la versión anterior. Regla para
+quien escribe `V<n>__*.sql` (y se revisa en cada PR que toque `db/migration/`):
+
+| Paso | Versión N (expandir) | Versión N+1 o posterior (contraer) |
+| --- | --- | --- |
+| Columna nueva | `ADD COLUMN … NULL` o `NOT NULL DEFAULT …` (la versión anterior no la conoce y sus `INSERT` siguen valiendo) | si hace falta, quitar el `DEFAULT` |
+| Tabla nueva | `CREATE TABLE` (la versión anterior la ignora) | — |
+| Renombrar columna/tabla | agregar la nueva, el código escribe en las dos y lee de la nueva; copiar los datos (`UPDATE … SET nueva = vieja`) | dejar de escribir la vieja; borrarla en una versión todavía posterior |
+| Borrar columna/tabla | el código deja de usarla (sin migración) | `DROP` recién cuando ninguna versión a la que se pueda volver la use |
+| Cambiar tipo o hacer `NOT NULL` | columna nueva con el tipo nuevo, como un renombre | — |
+| Índice único / restricción nueva | primero limpiar los datos que la violarían, en la misma migración | — |
+
+- Nada de `DROP`, `RENAME` ni cambios de tipo en la misma versión que deja de usar la columna: si esa versión falla
+  y `update.sh` vuelve atrás, la anterior se rompe.
+- Una migración publicada no se edita nunca (Flyway compara sumas); los arreglos van en una `V<n+1>`.
+- Las migraciones corren dentro del arranque del backend: que sean rápidas (tablas chicas en fase 1); un `UPDATE`
+  masivo o un índice sobre una tabla grande se hace en lotes o en una ventana de mantenimiento.
+- Ejemplo real: `V5__admin_token_version.sql` sólo agrega `admin_user.token_version INT NOT NULL DEFAULT 0`; la
+  versión anterior sigue funcionando con la columna puesta.
+- Si igual hace falta un cambio incompatible: anunciar la ventana, `backup.sh --label pre-<cambio>` y, si la versión
+  nueva falla, restaurar ese backup además de volver atrás la imagen (comandos de arriba).
 
 ---
 
@@ -363,7 +402,7 @@ Después de cualquier rotación: actualizar la copia del `.env` en el gestor de 
 | Secreto | Cómo | Efecto |
 | --- | --- | --- |
 | `JWT_SECRET` | `sudo /opt/qiao/deploy/rotate-secret.sh JWT_SECRET` | todas las sesiones se cierran; los códigos de acceso pendientes dejan de valer |
-| `PARTNER_API_KEY` | acordar la hora con el socio; `rotate-secret.sh PARTNER_API_KEY`; entregarle la clave nueva (`sudo grep ^PARTNER_API_KEY= /opt/qiao/deploy/.env`) | la API del socio rechaza la clave vieja de inmediato |
+| `PARTNER_API_KEY` | en dos pasos, sin corte (ver abajo): `rotate-secret.sh PARTNER_API_KEY`, entregar la clave nueva al socio y, cuando ya la use, `rotate-secret.sh --finish-partner-rotation` | entre los dos pasos valen la nueva y la anterior; después, sólo la nueva |
 | `DB_PASSWORD` | `rotate-secret.sh DB_PASSWORD` (cambia la contraseña dentro de MySQL y en `.env`) | MySQL y el backend se reinician (~1 minuto de API caída) |
 | `MYSQL_ROOT_PASSWORD` | `rotate-secret.sh MYSQL_ROOT_PASSWORD` | MySQL se reinicia; el backend se reconecta solo |
 | Contraseña SMTP | consola de DirectMail → la dirección remitente → *Set SMTP password*; copiar en `SMTP_PASSWORD`; `docker compose up -d` | — |
@@ -375,17 +414,46 @@ Después de cualquier rotación: actualizar la copia del `.env` en el gestor de 
 Importante: cambiar `DB_PASSWORD` o `MYSQL_ROOT_PASSWORD` **a mano en `.env` no alcanza** (MySQL guarda la
 contraseña en su propia base y sólo lee esas variables la primera vez): usar siempre `rotate-secret.sh`.
 
-**Contraseña del administrador**: la fase 1 no tiene «cambiar mi contraseña». `ADMIN_BOOTSTRAP_PASSWORD` sólo
-se usa cuando no existe ningún admin; después de entrar por primera vez se puede vaciar en `.env`. Para cambiar
-la contraseña de un admin hoy (provisorio, hasta que exista la función):
-```bash
-sudo apt-get install -y apache2-utils
-read -rs -p 'Contraseña nueva (12+ caracteres): ' P; echo      # no se muestra ni queda en el historial
-HASH="$(htpasswd -nbBC 12 '' "$P" | tr -d ':\n' | sed 's/^\$2y/\$2a/')"; unset P
-cd /opt/qiao/deploy && printf "UPDATE admin_user SET password_hash='%s', failed_attempts=0, locked_until=NULL WHERE email='%s';\n" "$HASH" 'admin@tu-dominio.com' \
-  | sudo docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot qiao'
-unset HASH
-```
+**Clave del socio, paso a paso** (sin que el socio quede sin servicio):
+1. `sudo /opt/qiao/deploy/rotate-secret.sh PARTNER_API_KEY`: genera la clave nueva, la clave actual pasa a
+   `PARTNER_API_KEY_PREVIOUS` y el backend se reinicia (~1 minuto). Desde ahí **valen las dos**.
+2. Entregar la clave nueva al socio por un canal seguro: `sudo grep ^PARTNER_API_KEY= /opt/qiao/deploy/.env`.
+3. Mientras el socio siga usando la anterior, cada llamada suya queda en back-office → *Cumplimiento → Auditoría*
+   (actor `PARTNER`) con `partnerKey: PREVIOUS` y un aviso, y en los logs del backend como `WARN`. `status.sh`
+   recuerda que la rotación está en curso.
+4. Cuando el socio confirme el cambio: `sudo /opt/qiao/deploy/rotate-secret.sh --finish-partner-rotation`. Antes de
+   cortar mira la auditoría: si el socio usó la clave anterior después de la nueva (o todavía no usó la nueva), se
+   niega; `--force` corta igual. Al terminar, la clave anterior responde 401.
+- No se puede empezar otra rotación sin terminar la que está en curso.
+- **Clave filtrada**: no hace falta esperar al socio: paso 1 y enseguida paso 4 (si se niega, con `--force`).
+  La clave filtrada deja de valer en ~2 minutos; el socio queda sin acceso hasta recibir la nueva.
+- A mano en `.env`: `PARTNER_API_KEY_PREVIOUS` vacía, o de 32+ caracteres y distinta de `PARTNER_API_KEY`; si no, el
+  backend no arranca.
+
+### 7.1 Administradores: contraseñas y bajas
+- **Cambiar la propia contraseña** (cualquier admin): back-office → *Mi perfil* → *Contraseña*: la actual y la nueva
+  (12+ caracteres, distinta de la actual). Al cambiarla se cierran **todas las demás sesiones** de ese admin (otros
+  navegadores, otro dispositivo); la sesión desde la que se cambió sigue abierta. Queda en la auditoría
+  (`ADMIN_PASSWORD_CHANGED`; los intentos con la contraseña actual equivocada, `ADMIN_PASSWORD_CHANGE_FAILED`).
+  Hay como máximo 5 intentos cada 15 minutos.
+- **Desactivar a un admin** (SUPERADMIN; p. ej. alguien deja el proyecto o se sospecha de su cuenta): back-office →
+  *Administradores* → *Desactivar*. No puede volver a entrar y sus sesiones abiertas dejan de funcionar en su próxima
+  acción. Nadie puede desactivarse a sí mismo ni desactivar al último SUPERADMIN activo. *Reactivar* le devuelve el
+  acceso (con su contraseña de siempre; las sesiones viejas no reviven). Auditoría: `ADMIN_DISABLED`, `ADMIN_ENABLED`.
+- `ADMIN_BOOTSTRAP_PASSWORD` sólo se usa cuando no existe ningún admin; después del primer arranque se puede
+  vaciar en `.env` (y conviene: la contraseña real ya se cambió desde *Mi perfil*).
+- **Contraseña olvidada**: no hay recuperación por correo. Si hay otro SUPERADMIN, puede crear una cuenta nueva
+  para esa persona (con otro email) y desactivar la vieja. Sólo si nadie puede entrar (el único SUPERADMIN olvidó la
+  suya), poner una contraseña nueva directamente en la base; esto también cierra todas sus sesiones:
+  ```bash
+  sudo apt-get install -y apache2-utils
+  read -rs -p 'Contraseña nueva (12+ caracteres): ' P; echo      # no se muestra ni queda en el historial
+  HASH="$(htpasswd -nbBC 12 '' "$P" | tr -d ':\n' | sed 's/^\$2y/\$2a/')"; unset P
+  cd /opt/qiao/deploy && printf "UPDATE admin_user SET password_hash='%s', failed_attempts=0, locked_until=NULL, status='ACTIVE', token_version=token_version+1 WHERE email='%s';\n" "$HASH" 'admin@tu-dominio.com' \
+    | sudo docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot qiao'
+  unset HASH
+  ```
+  Después, entrar y cambiarla otra vez desde *Mi perfil* para que quede en la auditoría.
 
 ---
 
@@ -455,7 +523,13 @@ Caddy renueva solo unos 30 días antes del vencimiento; `status.sh` avisa con me
 
 ### 8.6 La versión nueva no arranca
 `update.sh` ya volvió a la anterior. Ver el motivo: `docker compose logs --tail 300 backend`. Errores típicos:
-una variable obligatoria nueva que falta en `.env`, o una migración que falló (ver sección 5).
+una variable obligatoria nueva que falta en `.env`, o una migración que falló (ver sección 5). El control de
+arranque de producción se niega, con un mensaje que nombra la variable, si:
+- `APP_CONTRACTS_HK_ENTITY_NAME` o `APP_CONTRACTS_PARTNER_ENTITY_NAME` están vacías o tienen un marcador `[…]` y
+  `PAYMENT_PROVIDER=stripe` (servidores instalados antes de esta comprobación: completarlas antes de actualizar);
+- `JWT_SECRET`, `PARTNER_API_KEY`, `PARTNER_API_KEY_PREVIOUS` o `ADMIN_BOOTSTRAP_PASSWORD` tienen un valor de ejemplo
+  del repositorio, o una clave del socio tiene menos de 32 caracteres, o la anterior es igual a la actual;
+- `STRIPE_API_BASE` apunta a otro lugar que `https://api.stripe.com`.
 
 ### 8.7 Los backups fallan
 `sudo journalctl -u qiao-backup -n 100`. Causas: MySQL caído, menos de 1 GB libre, credenciales de OSS
@@ -463,6 +537,9 @@ una variable obligatoria nueva que falta en `.env`, o una migración que falló 
 
 ### 8.8 Sospecha de acceso indebido o secreto filtrado
 1. Rotar el secreto afectado (sección 7); ante la duda, todos los de `rotate-secret.sh` y las claves de Stripe, SMTP y OSS.
+   La clave del socio, terminando la rotación enseguida (sección 7, «Clave filtrada»). Una cuenta del back-office:
+   desactivarla desde *Administradores* (sus sesiones se cortan) o, si es la propia, cambiar la contraseña desde
+   *Mi perfil* (cierra las demás sesiones).
 2. Revisar en el back-office → Auditoría y en `docker compose logs nginx` los accesos.
 3. Hacer y conservar un backup (`backup.sh --label incidente`) y un snapshot del disco antes de cambiar más cosas.
 4. Evaluar la obligación de notificar según la política de privacidad (datos de ingenieros y clientes).
@@ -476,7 +553,8 @@ hace desde fuera hacia el servidor, sin tocar la página.
 
 ### 9.1 `status.sh`
 Sólo hace pedidos al propio servidor. Código de salida 0 si todo está bien, 1 si hay alguna falla (sirve para
-automatizar más adelante).
+automatizar más adelante). Muestra la versión y el commit que informa el backend (`/api/health`) y avisa si ese commit
+no coincide con `QIAO_IMAGE_TAG`.
 
 ### 9.2 Uptime Kuma (opcional, en el propio servidor)
 Detecta caídas del servicio y vencimientos de certificado; **no** dice nada de la conectividad desde China
@@ -552,7 +630,7 @@ apuntar el DNS al ECS y `docker compose up -d`.
 | `h5` | build + `check:external` (ninguna URL externa en `/m/`) |
 | `deploy` | ShellCheck de los scripts, `docker compose config` de las variantes, `nginx -t`, `caddy validate` |
 | `e2e` | `./scripts/e2e.sh`: flujo completo con Playwright. En el runner de GitHub hay Docker; como no existe `/opt/pw-browsers`, el script instala Chromium con `npx playwright install --with-deps chromium` |
-| `images` | sólo en `main` y si están configuradas las variables: construye y publica `qiao-backend:<sha>` y `qiao-nginx:<sha>` en ACR, y muestra el comando de despliegue en el resumen |
+| `images` | sólo en `main` y si están configuradas las variables: construye y publica `qiao-backend:<sha>` (con `APP_COMMIT=<sha>`, que muestra `/api/health`) y `qiao-nginx:<sha>` en ACR, y muestra el comando de despliegue en el resumen |
 
 Configuración en GitHub → repo → *Settings → Secrets and variables → Actions*:
 
@@ -568,12 +646,16 @@ Configuración en GitHub → repo → *Settings → Secrets and variables → Ac
 - El servidor descarga las mismas imágenes por la dirección VPC (`registry-vpc.cn-hongkong.aliyuncs.com`).
 - Recomendado: *Settings → Branches → Branch protection* en `main` exigiendo `backend`, `web`, `h5`, `deploy`
   y `e2e` (la regla del proyecto: e2e en verde antes de cada commit a `main`).
+- Versiones de las acciones (noviembre de 2026): `actions/checkout@v7`, `actions/setup-java@v6`,
+  `actions/setup-node@v7`, `actions/upload-artifact@v7`, `docker/login-action@v4` (corren en Node 24: los runners
+  de GitHub ya lo tienen; un runner propio necesita la versión 2.327.1 o posterior).
 
 ### Prueba local del despliegue (para desarrolladores)
 `deploy/test/run.sh` levanta todo el stack con artefactos ya compilados, como proyecto `qiao-deploytest` en
 `127.0.0.1:18080/18443` (no choca con `scripts/e2e.sh`), y prueba HTTPS con la CA interna de Caddy, cabeceras,
 backups, OSS (con un S3 local), restore, `status.sh`, `update.sh` con rollback, `rotate-secret.sh`, la variante
-SLB y Uptime Kuma. Ver la cabecera del script.
+SLB y Uptime Kuma, la rotación sin corte de la clave del socio, la versión y el commit en `/api/health` y que el
+backend no arranque sin razones sociales con pagos reales. Ver la cabecera del script.
 
 ---
 
@@ -619,6 +701,9 @@ sudo /opt/qiao/deploy/restore.sh --list                 # backups locales y en O
 sudo /opt/qiao/deploy/restore.sh --dry-run              # prueba de restauración (no toca producción)
 sudo /opt/qiao/deploy/restore.sh <nombre>               # restaurar (pide confirmación)
 sudo /opt/qiao/deploy/rotate-secret.sh JWT_SECRET       # rotar un secreto
+sudo /opt/qiao/deploy/rotate-secret.sh PARTNER_API_KEY  # clave del socio, paso 1 (las dos valen)
+sudo /opt/qiao/deploy/rotate-secret.sh --finish-partner-rotation   # paso 2: sólo la nueva
+curl -s https://tu-dominio.com/api/health               # {"status":"UP","version":…,"commit":…}
 sudo docker compose up -d                               # aplicar cambios del .env / levantar lo caído
 sudo systemctl list-timers qiao-backup.timer            # próximo backup automático
 ```

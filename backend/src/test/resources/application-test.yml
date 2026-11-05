@@ -1,12 +1,16 @@
 # Integration tests: the datasource comes from Testcontainers (@ServiceConnection).
 app:
   base-url: http://localhost:5173
+  # as if the image had been built with --build-arg APP_COMMIT=… (HealthIT)
+  commit: test-commit-0123abc
   jwt:
     secret: test-only-jwt-secret-0123456789abcdef0123456789
   storage:
     local-dir: target/test-uploads
   partner:
     api-key: test-partner-key
+    # a rotation in progress: the previous key keeps working, with a warning in the audit (PartnerKeyRotationIT)
+    api-key-previous: test-partner-key-previous
   admin:
     bootstrap-email: admin@test.qiao
     bootstrap-password: TestAdmin-password-1

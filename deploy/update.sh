@@ -131,8 +131,11 @@ else
     fi
   fi
   new_tag="$(git -c safe.directory="$REPO_DIR" -C "$REPO_DIR" rev-parse --short=12 HEAD)"
+  # Commit completo que el backend muestra en /api/health (build arg APP_COMMIT, ver docker-compose.yml).
+  build_commit="$(git -c safe.directory="$REPO_DIR" -C "$REPO_DIR" rev-parse HEAD)"
   if ! git -c safe.directory="$REPO_DIR" -C "$REPO_DIR" diff --quiet HEAD -- backend web h5 scripts deploy/nginx; then
     new_tag="$new_tag-mod$(date -u +%m%d%H%M)"
+    build_commit="$build_commit-mod"
     warn "Hay cambios locales sin commit en el código: se despliegan con el tag $new_tag"
   fi
 fi
@@ -151,7 +154,7 @@ if [[ "$mode" == images ]]; then
     || die "No se pudieron descargar las imágenes $new_tag (¿tag correcto? ¿docker login hecho?). Nada cambió."
 elif [[ "$action" != rollback ]]; then
   step "Construyendo $new_tag (la versión actual sigue atendiendo mientras tanto)"
-  QIAO_IMAGE_TAG="$new_tag" compose build backend nginx || die "Falló la construcción. Nada cambió."
+  QIAO_BUILD_COMMIT="$build_commit" QIAO_IMAGE_TAG="$new_tag" compose build backend nginx || die "Falló la construcción. Nada cambió."
 fi
 
 pin_running_images

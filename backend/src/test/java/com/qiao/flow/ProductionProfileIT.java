@@ -21,13 +21,15 @@ import static org.mockito.Mockito.verify;
 
 /**
  * Runs with the {@code prod} profile on top of {@code test} (and SMTP mail): the dev OTP endpoint must not exist,
- * the startup safety check must accept non-public secrets, and OTP codes must never reach the back-office outbox.
+ * the startup safety check must accept non-public secrets (and a partner key rotation in progress), and OTP codes must
+ * never reach the back-office outbox. Contract party names are not set: accepted only because payments are fake.
  */
 @ActiveProfiles("prod")
 @TestPropertySource(properties = {
         "app.payment.provider=fake",
         "app.mail.mode=smtp",
-        "app.partner.api-key=prod-it-partner-key-0123456789abcdef0123"})
+        "app.partner.api-key=prod-it-partner-key-0123456789abcdef0123",
+        "app.partner.api-key-previous=prod-it-previous-partner-key-0123456789"})
 class ProductionProfileIT extends IntegrationTest {
 
     private static final Pattern CODE = Pattern.compile("\\b(\\d{6})\\b");

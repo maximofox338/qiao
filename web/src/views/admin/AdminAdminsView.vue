@@ -9,6 +9,7 @@ import { ElMessageBox } from 'element-plus'
 import { useAdminStore } from '@/stores/admin'
 import { errorText, fieldErrorsOf, notifyError, notifySuccess } from '@/utils/errors'
 import { dateTime } from '@/utils/format'
+import StatusTag from '@/components/StatusTag.vue'
 
 const { t } = useI18n()
 const ROLES: AdminRole[] = ['SUPERADMIN', 'OPS', 'FINANCE', 'COMPLIANCE']
@@ -62,6 +63,37 @@ async function resetTotp(row: AdminAccount) {
   }
 }
 
+const changing = ref<number | null>(null)
+
+/**
+ * SUPERADMIN disables another admin (sessions end at once; the API refuses oneself and the last active SUPERADMIN)
+ * or re-enables a disabled one (they sign in again).
+ */
+async function setActive(row: AdminAccount, active: boolean) {
+  if (!active) {
+    try {
+      await ElMessageBox.confirm(t('admin.admins.disableConfirm', { email: row.email }), t('admin.admins.disable'), {
+        type: 'warning',
+        confirmButtonText: t('admin.admins.disable'),
+        cancelButtonText: t('common.cancel'),
+      })
+    } catch {
+      return
+    }
+  }
+  changing.value = row.id
+  try {
+    if (active) await adminApi.enableAdmin(row.id)
+    else await adminApi.disableAdmin(row.id)
+    notifySuccess(active ? t('admin.admins.enabledDone') : t('admin.admins.disabledDone'))
+    await load()
+  } catch (e) {
+    notifyError(e)
+  } finally {
+    changing.value = null
+  }
+}
+
 async function create() {
   createError.value = ''
   const e: Record<string, string> = {}
@@ -102,7 +134,15 @@ async function create() {
         <el-alert v-if="error" type="error" :closable="false" :title="error" show-icon />
         <el-table v-loading="loading" :data="rows" :empty-text="t('common.empty')" data-testid="admin-admins-table">
           <el-table-column prop="email" :label="t('admin.login.email')" min-width="200">
-            <template #default="{ row }"><span :data-testid="`admin-admins-row-${row.id}`">{{ row.email }}</span></template>
+            <template #default="{ row }">
+              <span :data-testid="`admin-admins-row-${row.id}`">{{ row.email }}</span>
+              <span v-if="row.id === me.admin?.id" class="q-muted q-small"> ({{ t('admin.admins.you') }})</span>
+            </template>
+          </el-table-column>
+          <el-table-column :label="t('common.status')" width="130">
+            <template #default="{ row }">
+              <StatusTag :status="row.status ?? 'ACTIVE'" size="small" :testid="`admin-admins-status-${row.id}`" />
+            </template>
           </el-table-column>
           <el-table-column :label="t('admin.admins.roles')" min-width="200">
             <template #default="{ row }">
@@ -131,6 +171,32 @@ async function create() {
           </el-table-column>
           <el-table-column :label="t('admin.settlements.createdAt')" width="170">
             <template #default="{ row }">{{ dateTime(row.createdAt) }}</template>
+          </el-table-column>
+          <el-table-column :label="t('admin.admins.actions')" width="140">
+            <template #default="{ row }">
+              <template v-if="row.id !== me.admin?.id">
+                <el-button
+                  v-if="row.status === 'DISABLED'"
+                  size="small"
+                  :loading="changing === row.id"
+                  :data-testid="`admin-admins-enable-${row.id}`"
+                  @click="setActive(row as AdminAccount, true)"
+                >
+                  {{ t('admin.admins.enable') }}
+                </el-button>
+                <el-button
+                  v-else
+                  size="small"
+                  type="danger"
+                  plain
+                  :loading="changing === row.id"
+                  :data-testid="`admin-admins-disable-${row.id}`"
+                  @click="setActive(row as AdminAccount, false)"
+                >
+                  {{ t('admin.admins.disable') }}
+                </el-button>
+              </template>
+            </template>
           </el-table-column>
         </el-table>
       </section>

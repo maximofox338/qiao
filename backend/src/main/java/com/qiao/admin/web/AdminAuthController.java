@@ -35,4 +35,14 @@ public class AdminAuthController {
         AdminUser admin = adminUserService.get(principal.id());
         return ApiResponse.ok(AdminLoginResponse.Admin.from(admin));
     }
+
+    /**
+     * Any admin: changes the own password and ends every other session; returns a new token for this one.
+     */
+    @PostMapping("/me/password")
+    public ApiResponse<AdminLoginResponse> changePassword(@AuthenticationPrincipal AuthPrincipal principal,
+                                                          @Valid @RequestBody ChangePasswordRequest request) {
+        return ApiResponse.ok(authService.changePassword(principal.id(), request.currentPassword(),
+                request.newPassword()));
+    }
 }

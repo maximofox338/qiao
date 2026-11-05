@@ -73,7 +73,11 @@ public enum ErrorCode {
     TOTP_ALREADY_ENABLED(HttpStatus.CONFLICT, "Two-factor authentication is already enabled"),
     TOTP_NOT_ENABLED(HttpStatus.CONFLICT, "Two-factor authentication is not enabled"),
     TOTP_SETUP_REQUIRED(HttpStatus.CONFLICT, "Start the authenticator setup first"),
-    TOTP_CODE_INVALID(HttpStatus.BAD_REQUEST, "Invalid or already used authenticator code");
+    TOTP_CODE_INVALID(HttpStatus.BAD_REQUEST, "Invalid or already used authenticator code"),
+
+    CURRENT_PASSWORD_INVALID(HttpStatus.BAD_REQUEST, "The current password is not correct"),
+    CANNOT_DISABLE_SELF(HttpStatus.CONFLICT, "You cannot disable your own account"),
+    LAST_SUPERADMIN(HttpStatus.CONFLICT, "The last active SUPERADMIN cannot be disabled");
 
     private final HttpStatus status;
     private final String defaultMessage;

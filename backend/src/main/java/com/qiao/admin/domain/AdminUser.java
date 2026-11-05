@@ -33,9 +33,18 @@ public class AdminUser extends BaseEntity {
      * Last accepted TOTP time-step (epoch seconds / 30); codes of this step or earlier are rejected.
      */
     private Long totpLastStep;
+    /**
+     * Version of the admin's sessions: tokens carry it and stop being accepted once it is incremented (password
+     * change, disable).
+     */
+    private Integer tokenVersion;
     private Integer failedAttempts;
     private Instant lockedUntil;
     private AdminStatus status;
+
+    public int tokenVersionOrZero() {
+        return tokenVersion == null ? 0 : tokenVersion;
+    }
 
     public Set<AdminRole> roleSet() {
         if (roles == null || roles.isBlank()) {
